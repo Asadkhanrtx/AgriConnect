@@ -126,10 +126,11 @@ exports.getAdminStats = async (req, res) => {
     ]);
 
     // Orders by month (last 6 months)
+    const { Op } = sequelize.constructor;
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const recentOrders = await Order.findAll({
-      where: { created_at: { [require('sequelize').Op.gte]: sixMonthsAgo } },
+      where: { created_at: { [Op.gte]: sixMonthsAgo } },
       attributes: [
         [sequelize.fn('DATE_FORMAT', sequelize.col('created_at'), '%Y-%m'), 'month'],
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],

@@ -1,5 +1,4 @@
 const { getDatabaseConnection } = require('agriconnect-shared/db');
-const { Op } = require('sequelize');
 
 exports.getCategories = async (req, res) => {
   try {
@@ -23,6 +22,7 @@ exports.getAllListings = async (req, res) => {
     const sequelize = await getDatabaseConnection();
     const { ProduceListing, Farmer, User } = sequelize.models;
 
+    const { Op } = sequelize.constructor;
     const where = { status: 'ACTIVE' };
     if (category) where.category = category;
     if (search) where.product_name = { [Op.like]: `%${search}%` };
@@ -205,6 +205,7 @@ exports.acceptBid = async (req, res) => {
     if (!bid) return res.status(404).json({ error: 'Bid not found' });
     if (bid.ProduceListing.farmer_id !== farmer.id) return res.status(403).json({ error: 'Unauthorized' });
 
+    const { Op } = sequelize.constructor;
     await bid.update({ status: 'ACCEPTED' });
     // Reject all other bids for this listing
     await Bid.update({ status: 'REJECTED' }, { where: { listing_id: bid.listing_id, id: { [Op.ne]: bid.id } } });
