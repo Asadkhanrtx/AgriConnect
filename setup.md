@@ -11,19 +11,28 @@
 Internet
    │
    ▼
-[ALB – agriconnect-alb]  (Public, port 80)
-   │  Path-based routing: /api/auth/* /api/marketplace/* etc.
-   ▼
+[ALB – agriconnect-alb]  ← Single public entry point (port 80)
+   │
+   ├── /api/auth/*          → Backend EC2 :3001 (auth-service)
+   ├── /api/marketplace/*   → Backend EC2 :3002 (marketplace-service)
+   ├── /api/orders/*        → Backend EC2 :3003 (order-service)
+   ├── /api/media/*         → Backend EC2 :3004 (media-service)
+   ├── /api/notifications/* → Backend EC2 :3005 (notification-service)
+   └── /* (default)         → Frontend EC2 :80  (Nginx / React SPA)
+
+[Frontend EC2 – Public Subnet]
+   └── Nginx: serves React static build from /var/www/agriconnect
+   └── NO proxy_pass — ALB handles all API routing
+
 [Backend EC2 – Private Subnet]
    └── PM2: 5 microservices on ports 3001–3005
    └── Reads secrets from → AWS Secrets Manager
    └── Reads/writes images → S3
 
-[Frontend EC2 – Public Subnet]
-   └── Nginx: serves React build + proxies /api/* to ALB
-
 [RDS MySQL – Database Subnet]  (private, no public access)
 ```
+
+> **Why single ALB?** The React app is served from `http://<ALB-DNS>/`. All API calls like `/api/auth/login` go to the same origin — the ALB routes them to the right backend service. No CORS issues, no nginx proxy, no hardcoded URLs.
 
 ---
 
@@ -75,9 +84,11 @@ Create the following **4 security groups** (all in `agriconnect-vpc`):
 #### SG 2: `agriconnect-frontend-sg`
 | Direction | Type | Port | Source |
 |-----------|------|------|--------|
-| Inbound | HTTP | 80 | 0.0.0.0/0 |
+| Inbound | HTTP | 80 | `agriconnect-alb-sg` (select by SG id) |
 | Inbound | SSH | 22 | Your IP (x.x.x.x/32) |
 | Outbound | All | All | 0.0.0.0/0 |
+
+> The frontend EC2 only needs to accept HTTP from the ALB, not from the open internet. Users reach it exclusively through the ALB DNS.
 
 #### SG 3: `agriconnect-backend-sg`
 | Direction | Type | Port | Source |
@@ -448,35 +459,42 @@ pm2 logs agriconnect-auth --lines 20
 
 ## SECTION 9: ALB Configuration
 
-The ALB routes traffic from the internet to the correct microservice port on the backend.
+The ALB is the **single public entry point** for the entire application — both the React frontend and all backend API services.
 
 ### 9.1 Create Target Groups
 
-Go to **EC2 Console → Target Groups → Create target group** for each:
+Go to **EC2 Console → Target Groups → Create target group** and create all **6** groups below.
 
-| Target Group Name | Protocol | Port | Health Check Path |
-|-------------------|----------|------|-------------------|
-| `agriconnect-auth-tg` | HTTP | 3001 | `/health` |
-| `agriconnect-market-tg` | HTTP | 3002 | `/health` |
-| `agriconnect-order-tg` | HTTP | 3003 | `/health` |
-| `agriconnect-media-tg` | HTTP | 3004 | `/health` |
-| `agriconnect-notif-tg` | HTTP | 3005 | `/health` |
+#### Backend target groups (register Backend EC2, override port)
 
-For each target group:
+| Target Group Name | Port | Target | Health Check Path |
+|-------------------|------|--------|-------------------|
+| `agriconnect-auth-tg` | 3001 | Backend EC2 | `/health` |
+| `agriconnect-market-tg` | 3002 | Backend EC2 | `/health` |
+| `agriconnect-order-tg` | 3003 | Backend EC2 | `/health` |
+| `agriconnect-media-tg` | 3004 | Backend EC2 | `/health` |
+| `agriconnect-notif-tg` | 3005 | Backend EC2 | `/health` |
+
+#### Frontend target group (register Frontend EC2, port 80)
+
+| Target Group Name | Port | Target | Health Check Path |
+|-------------------|------|--------|-------------------|
+| `agriconnect-frontend-tg` | 80 | Frontend EC2 | `/` |
+
+**Settings for every target group:**
 - Target type: **Instances**
+- Protocol: HTTP
 - VPC: `agriconnect-vpc`
-- Health check protocol: HTTP
-- Health check path: `/health`
 - Healthy threshold: 2
 - Unhealthy threshold: 3
-- Timeout: 5 seconds
-- Interval: 30 seconds
+- Timeout: 5 s
+- Interval: 30 s
 
-After creating each target group:
-1. Click **Register targets**
-2. Select your **backend EC2 instance**
-3. Override port to the correct port (3001, 3002, etc.)
-4. Click **Include as pending below → Register pending targets**
+**Register targets:**
+- Backend TGs: select **Backend EC2** → override port to the number shown above
+- Frontend TG: select **Frontend EC2** → port 80 (no override needed)
+
+> The backend `/health` endpoints are at the root (e.g. `http://backend-ip:3001/health`), not under `/api/`. The frontend `/` health check just verifies Nginx is returning 200.
 
 ### 9.2 Create the ALB
 
@@ -485,46 +503,54 @@ After creating each target group:
 3. Scheme: **Internet-facing**
 4. IP address type: IPv4
 5. VPC: `agriconnect-vpc`
-6. Mappings: Select **both public subnets** (required: minimum 2 AZs)
+6. Mappings: Select **both public subnets** (the ALB requires at least 2 AZs)
 7. Security groups: `agriconnect-alb-sg`
-8. Listeners: HTTP:80 → Default action: Forward to `agriconnect-auth-tg` (temporary)
+8. Listeners: HTTP:80 → Default action: Forward to `agriconnect-frontend-tg`
 9. Click **Create load balancer**
-10. **Copy the ALB DNS name** — looks like `agriconnect-alb-1234567890.ap-south-1.elb.amazonaws.com`
+10. **Copy the ALB DNS name** — e.g. `agriconnect-alb-851613288.ap-south-1.elb.amazonaws.com`
+    > This DNS is your application's public URL. **Bookmark it — you will use it for everything.**
 
 ### 9.3 Listener Rules
 
 1. Go to the ALB → **Listeners → HTTP:80 → Manage rules**
-2. Add the following rules (in order, before the default):
+2. Add the following rules **in this exact priority order**:
 
-| Priority | Condition | Action |
-|----------|-----------|--------|
-| 1 | Path is `/api/auth/*` | Forward to `agriconnect-auth-tg` |
-| 2 | Path is `/api/marketplace/*` | Forward to `agriconnect-market-tg` |
-| 3 | Path is `/api/orders/*` | Forward to `agriconnect-order-tg` |
-| 4 | Path is `/api/media/*` | Forward to `agriconnect-media-tg` |
-| 5 | Path is `/api/notifications/*` | Forward to `agriconnect-notif-tg` |
+| Priority | Condition (Path pattern) | Forward to |
+|----------|--------------------------|------------|
+| 1 | `/api/auth/*` | `agriconnect-auth-tg` |
+| 2 | `/api/marketplace/*` | `agriconnect-market-tg` |
+| 3 | `/api/orders/*` | `agriconnect-order-tg` |
+| 4 | `/api/media/*` | `agriconnect-media-tg` |
+| 5 | `/api/notifications/*` | `agriconnect-notif-tg` |
+| Default | *(all other paths)* | `agriconnect-frontend-tg` |
 
-> The default rule (lowest priority) can remain pointing to `agriconnect-auth-tg`.
+> **Why this order?** The ALB evaluates rules top-to-bottom. `/api/*` paths go to backend services; everything else (including `/`, `/login`, `/farmer`, etc.) falls through to the frontend Nginx which serves `index.html` for React client-side routing.
 
 ### 9.4 Verify ALB Routing
 
-From your local machine or any internet-connected machine:
+From your local machine, replace `<ALB-DNS>` with your real ALB DNS:
+
 ```bash
-# Replace with your actual ALB DNS
-ALB="http://agriconnect-alb-1234567890.ap-south-1.elb.amazonaws.com"
+ALB="http://agriconnect-alb-851613288.ap-south-1.elb.amazonaws.com"
 
-curl $ALB/health                     # Should hit auth-service → "auth-service"
-curl $ALB/api/auth/health            # Wait -- actually use the /health path at root
+# Frontend — should return HTML (React app)
+curl -I $ALB/
 
-# Proper test:
-curl $ALB/api/marketplace/listings   # Should return JSON listings array
+# Backend services — should return JSON health responses
+curl $ALB/api/auth/login             # 400 (missing body) = service is up
+curl $ALB/api/marketplace/listings   # 200 with JSON listings array
+
+# Direct health checks (ALB uses these, not /api/*/health)
+# You cannot test these through the ALB path rules.
+# Test them directly on the backend EC2 via SSH:
+#   curl http://localhost:3001/health  → {"status":"ok","service":"auth-service"}
 ```
-
-> Note: The ALB health checks hit `/health` at the **root** of each service, not `/api/*/health`. That's why we added `app.get('/health', ...)` to each service's index.js.
 
 ---
 
 ## SECTION 10: Frontend Deployment
+
+> **Complete Section 9 (ALB) before this step.** The frontend must be deployed first so the ALB frontend target group health check passes.
 
 SSH into the **frontend EC2** and run:
 
@@ -533,35 +559,41 @@ cd /home/ubuntu/AgriConnect
 bash scripts/frontend-install.sh
 ```
 
-The script will prompt:
-```
-Enter the Backend ALB DNS or IP (e.g. http://agriconnect-alb-xxxx.ap-south-1.elb.amazonaws.com): 
-```
-
-Enter your full ALB DNS with `http://` prefix.
+**No prompts required.** The script detects its own location automatically.
 
 **What the script does:**
-1. Installs Node.js 20.x and Nginx
-2. Builds the React application
-3. Configures Nginx to:
-   - Serve the React SPA from `/home/ubuntu/AgriConnect/frontend/dist`
-   - Proxy all `/api/*` requests to the ALB
-4. Starts and enables Nginx
+1. Installs Node.js 20.x and Nginx (skips if already installed)
+2. Builds the React app (`npm run build`) — no `BACKEND_URL` needed because the React app uses relative API paths (`/api/auth/...`) and the ALB handles routing
+3. Deploys built files to `/var/www/agriconnect` (not the home directory — avoids permission errors)
+4. Sets correct ownership: `chown -R www-data:www-data /var/www/agriconnect`
+5. Writes a clean Nginx config — serves static files only, **no proxy_pass** (the ALB routes `/api/*`)
+6. Validates nginx config (`nginx -t`) before restarting
 
 ### Verify Frontend
 
 ```bash
-# Check nginx is running
+# Nginx is running
 sudo systemctl status nginx
 
-# Test the health of nginx
-curl http://localhost/
+# Nginx serves the React app on port 80
+curl -I http://localhost/
+# Expected: HTTP/1.1 200 OK
 
-# Get the frontend public IP
-curl http://169.254.169.254/latest/meta-data/public-ipv4
+# Files are deployed with correct ownership
+ls -la /var/www/agriconnect/
+# Expected: files owned by www-data
 ```
 
-Open `http://<FRONTEND_PUBLIC_IP>` in your browser — you should see the AgriConnect login page.
+### Access the Application
+
+```
+http://agriconnect-alb-851613288.ap-south-1.elb.amazonaws.com/
+```
+
+> ⚠️ **Use the ALB DNS, NOT the frontend EC2's public IP.**
+> 
+> - Via **ALB DNS** → React loads → API calls go to same domain → ALB routes `/api/*` to backend → ✅ works
+> - Via **EC2 IP** → React loads → API calls go to EC2 IP → Nginx has no `/api/` route → ❌ 404 on all API calls
 
 ---
 
@@ -626,9 +658,10 @@ Use this checklist to confirm everything is working:
 Infrastructure:
 [ ] RDS endpoint is accessible from backend EC2 (test: nc -zv <rds-endpoint> 3306)
 [ ] All 5 PM2 services show status: online
-[ ] All 5 /health endpoints return {"status":"ok"}
-[ ] ALB target groups show Healthy targets
-[ ] Frontend loads at http://<FRONTEND_PUBLIC_IP>
+[ ] All 5 /health endpoints return {"status":"ok"} (curl localhost:3001/health on backend EC2)
+[ ] All 6 ALB target groups show Healthy targets (check EC2 → Target Groups)
+[ ] Frontend loads at http://agriconnect-alb-851613288.ap-south-1.elb.amazonaws.com/
+[ ] /var/www/agriconnect/ exists and is owned by www-data on frontend EC2
 
 Authentication:
 [ ] Login as Farmer works
