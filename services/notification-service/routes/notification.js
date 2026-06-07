@@ -4,7 +4,9 @@ const notificationController = require('../controllers/notificationController');
 const { authenticateToken } = require('agriconnect-shared/middleware/auth');
 
 router.get('/', authenticateToken, notificationController.getNotifications);
-router.post('/send', authenticateToken, notificationController.sendNotification); // Internal simulation endpoint
+router.get('/unread-count', authenticateToken, notificationController.getUnreadCount);
+router.post('/send', authenticateToken, notificationController.sendNotification);
+router.put('/read-all', authenticateToken, notificationController.markAllRead);
 router.put('/:id/read', authenticateToken, notificationController.markAsRead);
 
 module.exports = router;

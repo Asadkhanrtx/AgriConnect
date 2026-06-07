@@ -6,7 +6,7 @@ body {
   margin: 0;
   padding: 0;
   background-color: #F1F8E9;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', 'Roboto', sans-serif;
   color: #333333;
 }
 
@@ -15,22 +15,76 @@ a {
   color: inherit;
 }
 
-.hero-gradient {
-  background: linear-gradient(135deg, #2E7D32 0%, #66BB6A 100%);
-  color: white;
-}
-
+/* ── Glassmorphism ── */
 .glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
+/* ── Hover lift effect ── */
 .hover-lift {
-  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
 }
 .hover-lift:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.10);
+}
+
+/* ── Gradient utilities ── */
+.hero-gradient {
+  background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 60%, #388E3C 100%);
+  color: white;
+}
+
+/* ── Fade-in animation ── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.45s ease forwards;
+}
+
+/* ── Pulse for notification badge ── */
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.15); }
+}
+
+.pulse {
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+/* ── Skeleton shimmer ── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #b0bec5; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #78909c; }
+
+/* ── Table row hover ── */
+.MuiTableRow-root:hover {
+  background-color: rgba(46, 125, 50, 0.04) !important;
+}
+
+/* ── Auth page full-screen reset ── */
+.auth-fullscreen {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 10;
 }

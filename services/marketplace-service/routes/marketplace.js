@@ -10,6 +10,7 @@ router.get('/categories', marketplaceController.getCategories);
 
 // Farmer only
 router.get('/my-listings', authenticateToken, requireRole(['FARMER']), marketplaceController.getMyListings);
+router.get('/farmer-bids', authenticateToken, requireRole(['FARMER']), marketplaceController.getReceivedBids);
 router.post('/listings', authenticateToken, requireRole(['FARMER']), marketplaceController.createListing);
 router.put('/listings/:id', authenticateToken, requireRole(['FARMER']), marketplaceController.updateListing);
 router.delete('/listings/:id', authenticateToken, requireRole(['FARMER']), marketplaceController.deleteListing);

@@ -735,7 +735,7 @@ AWS_REGION=ap-south-1 bash scripts/backend-update.sh
 ```bash
 # SSH into frontend EC2
 cd /home/ubuntu/AgriConnect
-BACKEND_URL=http://<ALB-DNS> bash scripts/frontend-update.sh
+bash scripts/frontend-update.sh
 ```
 
 ---
@@ -794,3 +794,134 @@ curl http://localhost:3001/health
 
 # Check the security group: backend-sg must allow ports 3001-3005 from alb-sg
 ```
+
+---
+
+## SECTION 16: Phase 1 Features & What Changed
+
+This section documents all Phase 1 improvements applied after the initial deployment.
+
+### 16.1 New Features Added
+
+| Feature | Location | Notes |
+|---------|----------|-------|
+| Full-screen Login/Register UI | `frontend/src/pages/Auth/` | Split-screen hero layout with farm imagery |
+| Weather Widget (Open-Meteo) | `frontend/src/components/WeatherWidget.jsx` | Free API, no key required, 20 Indian cities |
+| Farmer Earnings Chart | `Farmer/Dashboard.jsx` | Area chart from sales history |
+| Received Bids tab (Farmer) | `Farmer/Dashboard.jsx` | Farmer can accept/reject bids inline |
+| Buyer Stats Cards | `Buyer/Dashboard.jsx` | Total spent, active orders, bids |
+| Bid Notifications | `marketplace-service` | DB notification + email when bid placed |
+| Order Notifications | `order-service` | DB notification + email when order placed |
+| Bid Accept/Reject Notifications | `marketplace-service` | Buyer notified when farmer acts on bid |
+| Order Status Notifications | `order-service` | Buyer notified when order shipped/delivered |
+| Email templates | `shared/utils/email.js` | Beautiful HTML email templates |
+| `GET /api/marketplace/farmer-bids` | marketplace-service | New route: bids received by farmer |
+| `PUT /api/notifications/read-all` | notification-service | Mark all notifications read at once |
+| `GET /api/notifications/unread-count` | notification-service | Fast unread count endpoint |
+| Expanded seed data | `shared/scripts/seed.js` | 20 farmers, 100 listings, 50 orders, 100 bids |
+
+### 16.2 Critical Bug Fixed
+
+**The `\${token}` template literal bug in `frontend/src/App.jsx`.**
+
+The original file had:
+```js
+axios.get('/api/auth/me', { headers: { Authorization: `Bearer \${token}` } })
+```
+
+The `\$` escaped the dollar sign, so `token` was never substituted. Every page refresh would log the user out. This is now fixed to:
+```js
+Authorization: `Bearer ${token}`
+```
+
+### 16.3 Re-Seeding the Database with New Richer Data
+
+If you already ran the old seed and want fresh realistic data:
+
+```bash
+# SSH into backend EC2
+cd /home/ubuntu/AgriConnect
+git pull origin main
+
+# Re-install shared (adds nodemailer)
+cd shared && npm install && cd ..
+
+# Force re-seed: truncates all data and re-seeds with 100 listings, 50 orders, 100 bids
+AWS_REGION=ap-south-1 node shared/scripts/seed.js --force
+```
+
+> **Warning**: `--force` deletes ALL existing data (users, listings, orders, bids). Only use on a dev/staging database.
+
+**New default accounts (same passwords):**
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | admin@agriconnect.com | password123 |
+| Farmer | farmer1@example.com | password123 |
+| Buyer | buyer1@example.com | password123 |
+
+### 16.4 Weather Widget
+
+The weather widget in the Farmer Dashboard uses [Open-Meteo](https://open-meteo.com/) — a **free, open-source weather API** that requires no API key and has no rate limits for personal use.
+
+Supported cities: Amritsar, Ludhiana, Delhi, Agra, Lucknow, Jaipur, Bhopal, Nagpur, Pune, Mumbai, Nashik, Hyderabad, Bangalore, Mysore, Chennai, Coimbatore, Patna, Kolkata, Bhubaneswar, Chandigarh.
+
+**Farmer receives:**
+- Current temperature
+- Weather condition with icon
+- Humidity, rain probability, wind speed
+- Smart farming alerts (fog → "delay harvest", rain → "cover produce", storm → "protect equipment")
+
+### 16.5 Email Notifications (SMTP Setup)
+
+Notifications are written to the DB immediately. Email delivery requires SMTP configuration in `agriconnect/dev/email`:
+
+```json
+{
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_user": "your-actual-email@gmail.com",
+  "smtp_password": "your-gmail-app-password"
+}
+```
+
+> **Gmail App Password**: Go to Google Account → Security → 2-Step Verification → App Passwords → Create one for "AgriConnect". Use that 16-character password — **not** your regular Gmail password.
+
+If SMTP is not configured (placeholder values), the system logs a simulated email to the console and continues without crashing.
+
+**Notifications triggered automatically:**
+1. Buyer places bid → Farmer gets DB notification + email
+2. Farmer creates order → Farmer gets DB notification + email  
+3. Farmer accepts/rejects bid → Buyer gets DB notification
+4. Farmer ships order → Buyer gets DB notification
+5. Order delivered → Buyer gets DB notification
+
+### 16.6 Deploying Phase 1 Changes
+
+After pulling the updated code on both EC2s:
+
+**Backend EC2:**
+```bash
+cd /home/ubuntu/AgriConnect
+git pull origin main
+
+# Re-install shared dependencies (nodemailer added)
+cd shared && npm install && cd ..
+
+# Restart all services (no migration needed — no schema changes)
+pm2 restart all
+pm2 status
+
+# Verify all 5 services are online
+for port in 3001 3002 3003 3004 3005; do
+  echo -n ":$port → "; curl -s http://localhost:$port/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))"
+done
+```
+
+**Frontend EC2:**
+```bash
+cd /home/ubuntu/AgriConnect
+git pull origin main
+bash scripts/frontend-install.sh
+```
+
+> The frontend install script rebuilds the React app (picks up all UI changes) and re-deploys to `/var/www/agriconnect`.

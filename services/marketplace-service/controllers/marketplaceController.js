@@ -1,4 +1,5 @@
 const { getDatabaseConnection } = require('agriconnect-shared/db');
+const { sendEmail, bidNotificationEmail } = require('agriconnect-shared/utils/email');
 
 exports.getCategories = async (req, res) => {
   try {
@@ -9,7 +10,7 @@ exports.getCategories = async (req, res) => {
       where: { status: 'ACTIVE' },
       raw: true
     });
-    res.json(rows.map(r => r.category).filter(Boolean));
+    res.json(rows.map(r => r.category).filter(Boolean).sort());
   } catch (error) {
     console.error('Error fetching categories:', error);
     res.status(500).json({ error: 'Failed to fetch categories' });
@@ -18,11 +19,11 @@ exports.getCategories = async (req, res) => {
 
 exports.getAllListings = async (req, res) => {
   try {
-    const { search, category, page = 1, limit = 20 } = req.query;
+    const { search, category, page = 1, limit = 50 } = req.query;
     const sequelize = await getDatabaseConnection();
     const { ProduceListing, Farmer, User } = sequelize.models;
-
     const { Op } = sequelize.constructor;
+
     const where = { status: 'ACTIVE' };
     if (category) where.category = category;
     if (search) where.product_name = { [Op.like]: `%${search}%` };
@@ -30,7 +31,11 @@ exports.getAllListings = async (req, res) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const { count, rows } = await ProduceListing.findAndCountAll({
       where,
-      include: [{ model: Farmer, attributes: ['farm_name', 'location'], include: [{ model: User, attributes: ['first_name', 'last_name'] }] }],
+      include: [{
+        model: Farmer,
+        attributes: ['farm_name', 'location'],
+        include: [{ model: User, attributes: ['first_name', 'last_name'] }]
+      }],
       limit: parseInt(limit),
       offset,
       order: [['created_at', 'DESC']]
@@ -90,14 +95,11 @@ exports.createListing = async (req, res) => {
 
     const listing = await ProduceListing.create({
       farmer_id: farmer.id,
-      product_name,
-      category,
+      product_name, category,
       quantity: parseFloat(quantity),
       unit,
       price: parseFloat(price),
-      harvest_date,
-      description,
-      image_url,
+      harvest_date, description, image_url,
       status: 'ACTIVE'
     });
     res.status(201).json(listing);
@@ -115,6 +117,7 @@ exports.updateListing = async (req, res) => {
     const listing = await ProduceListing.findByPk(req.params.id);
     if (!listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.farmer_id !== farmer.id) return res.status(403).json({ error: 'Unauthorized' });
+
     const { product_name, category, quantity, unit, price, harvest_date, description, image_url, status } = req.body;
     await listing.update({ product_name, category, quantity, unit, price, harvest_date, description, image_url, status });
     res.json(listing);
@@ -146,14 +149,55 @@ exports.createBid = async (req, res) => {
     if (!listing_id || !amount) return res.status(400).json({ error: 'listing_id and amount are required' });
 
     const sequelize = await getDatabaseConnection();
-    const { Bid, Buyer, ProduceListing } = sequelize.models;
-    const buyer = await Buyer.findOne({ where: { user_id: req.user.id } });
+    const { Bid, Buyer, ProduceListing, Farmer, User, Notification } = sequelize.models;
+
+    const buyer = await Buyer.findOne({
+      where: { user_id: req.user.id },
+      include: [{ model: User, attributes: ['first_name', 'last_name', 'email'] }]
+    });
     if (!buyer) return res.status(404).json({ error: 'Buyer profile not found' });
 
-    const listing = await ProduceListing.findByPk(listing_id);
+    const listing = await ProduceListing.findByPk(listing_id, {
+      include: [{
+        model: Farmer,
+        attributes: ['user_id', 'farm_name'],
+        include: [{ model: User, attributes: ['id', 'email', 'first_name', 'last_name'] }]
+      }]
+    });
     if (!listing || listing.status !== 'ACTIVE') return res.status(404).json({ error: 'Listing not available' });
 
     const bid = await Bid.create({ buyer_id: buyer.id, listing_id, amount: parseFloat(amount) });
+
+    // ── Notify farmer (DB + email) ───────────────────────────────────────────
+    const farmerUserId = listing.Farmer?.user_id;
+    const farmerUser = listing.Farmer?.User;
+    if (farmerUserId) {
+      const buyerName = buyer.User
+        ? buyer.User.first_name + ' ' + buyer.User.last_name
+        : 'A buyer';
+
+      await Notification.create({
+        user_id: farmerUserId,
+        title: 'New Bid Received',
+        message: `${buyerName} from ${buyer.company_name} placed a bid of ₹${parseFloat(amount).toFixed(2)} on your ${listing.product_name} listing.`
+      }).catch(err => console.error('Notification create failed:', err.message));
+
+      if (farmerUser?.email) {
+        const farmerName = farmerUser.first_name + ' ' + farmerUser.last_name;
+        sendEmail({
+          to: farmerUser.email,
+          subject: `New Bid on your ${listing.product_name} listing`,
+          html: bidNotificationEmail({
+            farmerName,
+            buyerName: buyer.company_name,
+            productName: listing.product_name,
+            bidAmount: amount,
+            listingPrice: listing.price
+          })
+        });
+      }
+    }
+
     res.status(201).json(bid);
   } catch (error) {
     console.error('Error creating bid:', error);
@@ -186,7 +230,11 @@ exports.getMyBids = async (req, res) => {
 
     const bids = await Bid.findAll({
       where: { buyer_id: buyer.id },
-      include: [{ model: ProduceListing, attributes: ['product_name', 'price', 'unit', 'image_url', 'status'], include: [{ model: Farmer, attributes: ['farm_name'] }] }],
+      include: [{
+        model: ProduceListing,
+        attributes: ['product_name', 'price', 'unit', 'image_url', 'status'],
+        include: [{ model: Farmer, attributes: ['farm_name'] }]
+      }],
       order: [['created_at', 'DESC']]
     });
     res.json(bids);
@@ -196,19 +244,68 @@ exports.getMyBids = async (req, res) => {
   }
 };
 
+// Farmer: all bids received on their listings
+exports.getReceivedBids = async (req, res) => {
+  try {
+    const sequelize = await getDatabaseConnection();
+    const { Bid, ProduceListing, Farmer, Buyer, User } = sequelize.models;
+
+    const farmer = await Farmer.findOne({ where: { user_id: req.user.id } });
+    if (!farmer) return res.status(404).json({ error: 'Farmer profile not found' });
+
+    const bids = await Bid.findAll({
+      include: [
+        {
+          model: ProduceListing,
+          where: { farmer_id: farmer.id },
+          attributes: ['product_name', 'price', 'unit', 'image_url']
+        },
+        {
+          model: Buyer,
+          attributes: ['company_name'],
+          include: [{ model: User, attributes: ['first_name', 'last_name', 'email'] }]
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+    res.json(bids);
+  } catch (error) {
+    console.error('Error fetching received bids:', error);
+    res.status(500).json({ error: 'Failed to fetch received bids' });
+  }
+};
+
 exports.acceptBid = async (req, res) => {
   try {
     const sequelize = await getDatabaseConnection();
-    const { Bid, ProduceListing, Farmer } = sequelize.models;
+    const { Bid, ProduceListing, Farmer, Buyer, User, Notification } = sequelize.models;
+    const { Op } = sequelize.constructor;
+
     const farmer = await Farmer.findOne({ where: { user_id: req.user.id } });
-    const bid = await Bid.findByPk(req.params.id, { include: [{ model: ProduceListing }] });
+    const bid = await Bid.findByPk(req.params.id, {
+      include: [
+        { model: ProduceListing },
+        { model: Buyer, include: [{ model: User, attributes: ['id', 'email', 'first_name'] }] }
+      ]
+    });
     if (!bid) return res.status(404).json({ error: 'Bid not found' });
     if (bid.ProduceListing.farmer_id !== farmer.id) return res.status(403).json({ error: 'Unauthorized' });
 
-    const { Op } = sequelize.constructor;
     await bid.update({ status: 'ACCEPTED' });
-    // Reject all other bids for this listing
-    await Bid.update({ status: 'REJECTED' }, { where: { listing_id: bid.listing_id, id: { [Op.ne]: bid.id } } });
+    await Bid.update({ status: 'REJECTED' }, {
+      where: { listing_id: bid.listing_id, id: { [Op.ne]: bid.id } }
+    });
+
+    // Notify buyer
+    const buyerUserId = bid.Buyer?.User?.id;
+    if (buyerUserId) {
+      await Notification.create({
+        user_id: buyerUserId,
+        title: 'Bid Accepted!',
+        message: `Your bid of ₹${parseFloat(bid.amount).toFixed(2)} on ${bid.ProduceListing.product_name} has been accepted by the farmer.`
+      }).catch(() => {});
+    }
+
     res.json(bid);
   } catch (error) {
     console.error('Error accepting bid:', error);
@@ -219,13 +316,29 @@ exports.acceptBid = async (req, res) => {
 exports.rejectBid = async (req, res) => {
   try {
     const sequelize = await getDatabaseConnection();
-    const { Bid, ProduceListing, Farmer } = sequelize.models;
+    const { Bid, ProduceListing, Farmer, Buyer, User, Notification } = sequelize.models;
+
     const farmer = await Farmer.findOne({ where: { user_id: req.user.id } });
-    const bid = await Bid.findByPk(req.params.id, { include: [{ model: ProduceListing }] });
+    const bid = await Bid.findByPk(req.params.id, {
+      include: [
+        { model: ProduceListing },
+        { model: Buyer, include: [{ model: User, attributes: ['id'] }] }
+      ]
+    });
     if (!bid) return res.status(404).json({ error: 'Bid not found' });
     if (bid.ProduceListing.farmer_id !== farmer.id) return res.status(403).json({ error: 'Unauthorized' });
 
     await bid.update({ status: 'REJECTED' });
+
+    const buyerUserId = bid.Buyer?.User?.id;
+    if (buyerUserId) {
+      await Notification.create({
+        user_id: buyerUserId,
+        title: 'Bid Declined',
+        message: `Your bid on ${bid.ProduceListing.product_name} was not accepted this time. Browse other listings and try again.`
+      }).catch(() => {});
+    }
+
     res.json(bid);
   } catch (error) {
     console.error('Error rejecting bid:', error);
