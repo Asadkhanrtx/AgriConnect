@@ -124,7 +124,7 @@ const BuyerDashboard = ({ user }) => {
   const handleBuy = async () => {
     setBuyLoading(true); setBuyError('');
     try {
-      await axios.post('/api/orders', { listing_id: selectedListing.id, quantity: parseFloat(buyQty) }, { headers });
+      await axios.post('/api/orders/create', { listing_id: selectedListing.id, quantity: parseFloat(buyQty) }, { headers });
       setBuyDialog(false); fetchListings(); fetchOrders(); setTab(1);
     } catch (err) { setBuyError(err.response?.data?.error || 'Order failed'); }
     finally { setBuyLoading(false); }

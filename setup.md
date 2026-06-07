@@ -895,6 +895,24 @@ If SMTP is not configured (placeholder values), the system logs a simulated emai
 4. Farmer ships order → Buyer gets DB notification
 5. Order delivered → Buyer gets DB notification
 
+### 16.5b ALB Path Routing — Critical Caveat
+
+The ALB listener rule `/api/orders/*` matches paths that have **at least one character after the trailing slash**, e.g. `/api/orders/create`, `/api/orders/my-orders`. It does **not** match the bare path `/api/orders` (no sub-path).
+
+If a request hits the bare path, the ALB falls through to the default rule → frontend Nginx. Nginx returns **405 Method Not Allowed** for POST requests because static file serving only allows GET/HEAD.
+
+**This is why the order creation endpoint is `POST /api/orders/create` (not `POST /api/orders`).**
+
+All API routes in this project follow the rule: every endpoint always has a named sub-path so it unambiguously matches its ALB listener rule:
+
+| Service | ALB Rule | Create endpoint |
+|---------|----------|-----------------|
+| Auth | `/api/auth/*` | `POST /api/auth/register` |
+| Marketplace | `/api/marketplace/*` | `POST /api/marketplace/listings` |
+| Orders | `/api/orders/*` | `POST /api/orders/create` ← |
+| Media | `/api/media/*` | `POST /api/media/upload/produce` |
+| Notifications | `/api/notifications/*` | `POST /api/notifications/send` |
+
 ### 16.6 Deploying Phase 1 Changes
 
 After pulling the updated code on both EC2s:
