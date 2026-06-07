@@ -1,7 +1,7 @@
 const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 
 const client = new SecretsManagerClient({
-  region: process.env.AWS_REGION || 'us-east-1'
+  region: process.env.AWS_REGION || 'ap-south-1'
 });
 
 const cache = new Map();

@@ -118,7 +118,7 @@ Create the following **4 security groups** (all in `agriconnect-vpc`):
    - Backup retention: 1 day
    - Disable performance insights (saves cost)
 5. Click **Create database** and wait ~10 minutes for status: **Available**
-6. **Note the endpoint**: Go to the database → Connectivity & security → copy the **Endpoint** (looks like `agriconnect-mysql.xxxxxxxxx.us-east-1.rds.amazonaws.com`)
+6. **Note the endpoint**: Go to the database → Connectivity & security → copy the **Endpoint** (looks like `agriconnect-mysql.xxxxxxxxx.ap-south-1.rds.amazonaws.com`)
 
 ---
 
@@ -127,9 +127,8 @@ Create the following **4 security groups** (all in `agriconnect-vpc`):
 ### Bucket 1: Produce Images (Public Read)
 
 1. Go to **S3 Console → Create bucket**
-2. **Bucket name**: `agriconnect-produce-images-<your-account-id>`
-   > S3 bucket names must be globally unique. Append your AWS account ID (12-digit number) to guarantee uniqueness.
-3. **Region**: Same region you're using everywhere (e.g. `us-east-1`)
+2. **Bucket name**: `agriconnect-produce-images-978594443309`
+3. **Region**: Same region you're using everywhere (e.g. `ap-south-1`)
 4. **Block Public Access**: **Uncheck** "Block all public access"
    - Acknowledge the warning
 5. **Versioning**: Enable
@@ -144,16 +143,16 @@ Create the following **4 security groups** (all in `agriconnect-vpc`):
       "Effect": "Allow",
       "Principal": "*",
       "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::agriconnect-produce-images-<your-account-id>/*"
+      "Resource": "arn:aws:s3:::agriconnect-produce-images-978594443309/*"
     }
   ]
 }
 ```
-> Replace `<your-account-id>` with your actual 12-digit AWS account ID. Find it in the top-right account menu.
+> Replace `978594443309` with your actual 12-digit AWS account ID. Find it in the top-right account menu.
 
 ### Bucket 2: Delivery Proofs (Private)
 
-1. **Bucket name**: `agriconnect-delivery-proofs-<your-account-id>`
+1. **Bucket name**: `agriconnect-delivery-proofs-978594443309`
 2. **Block Public Access**: Keep **all blocked** (default)
 3. **Versioning**: Enable
 4. Create — no bucket policy needed
@@ -173,7 +172,7 @@ For each secret: choose **Other type of secret**, then click **Plaintext** tab a
 
 ```json
 {
-  "host": "agriconnect-mysql.XXXXXXXXXX.us-east-1.rds.amazonaws.com",
+  "host": "agriconnect-mysql.XXXXXXXXXX.ap-south-1.rds.amazonaws.com",
   "port": 3306,
   "username": "admin",
   "password": "YOUR_RDS_PASSWORD_HERE",
@@ -205,7 +204,7 @@ For each secret: choose **Other type of secret**, then click **Plaintext** tab a
 
 ```json
 {
-  "region": "us-east-1",
+  "region": "ap-south-1",
   "access_key": "USE_IAM_ROLE",
   "secret_key": "USE_IAM_ROLE"
 }
@@ -232,11 +231,11 @@ For each secret: choose **Other type of secret**, then click **Plaintext** tab a
 
 ```json
 {
-  "produce_bucket": "agriconnect-produce-images-<your-account-id>",
-  "delivery_bucket": "agriconnect-delivery-proofs-<your-account-id>"
+  "produce_bucket": "agriconnect-produce-images-978594443309",
+  "delivery_bucket": "agriconnect-delivery-proofs-978594443309"
 }
 ```
-> Replace `<your-account-id>` with your 12-digit AWS account ID (same as bucket names).
+> Replace `978594443309` with your 12-digit AWS account ID (same as bucket names).
 
 ---
 
@@ -263,8 +262,8 @@ The backend EC2 needs permission to read Secrets Manager and access S3.
       "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
       "Resource": [
-        "arn:aws:s3:::agriconnect-produce-images-<your-account-id>/*",
-        "arn:aws:s3:::agriconnect-delivery-proofs-<your-account-id>/*"
+        "arn:aws:s3:::agriconnect-produce-images-978594443309/*",
+        "arn:aws:s3:::agriconnect-delivery-proofs-978594443309/*"
       ]
     }
   ]
@@ -399,7 +398,7 @@ bash scripts/backend-install.sh
 
 The script will prompt:
 ```
-Enter your AWS Region (e.g. us-east-1): us-east-1
+Enter your AWS Region (e.g. ap-south-1): ap-south-1
 ```
 
 **What the script does:**
@@ -490,7 +489,7 @@ After creating each target group:
 7. Security groups: `agriconnect-alb-sg`
 8. Listeners: HTTP:80 → Default action: Forward to `agriconnect-auth-tg` (temporary)
 9. Click **Create load balancer**
-10. **Copy the ALB DNS name** — looks like `agriconnect-alb-1234567890.us-east-1.elb.amazonaws.com`
+10. **Copy the ALB DNS name** — looks like `agriconnect-alb-1234567890.ap-south-1.elb.amazonaws.com`
 
 ### 9.3 Listener Rules
 
@@ -512,7 +511,7 @@ After creating each target group:
 From your local machine or any internet-connected machine:
 ```bash
 # Replace with your actual ALB DNS
-ALB="http://agriconnect-alb-1234567890.us-east-1.elb.amazonaws.com"
+ALB="http://agriconnect-alb-1234567890.ap-south-1.elb.amazonaws.com"
 
 curl $ALB/health                     # Should hit auth-service → "auth-service"
 curl $ALB/api/auth/health            # Wait -- actually use the /health path at root
@@ -536,7 +535,7 @@ bash scripts/frontend-install.sh
 
 The script will prompt:
 ```
-Enter the Backend ALB DNS or IP (e.g. http://agriconnect-alb-xxxx.us-east-1.elb.amazonaws.com): 
+Enter the Backend ALB DNS or IP (e.g. http://agriconnect-alb-xxxx.ap-south-1.elb.amazonaws.com): 
 ```
 
 Enter your full ALB DNS with `http://` prefix.
@@ -696,7 +695,7 @@ When ready to extend the platform, these services slot in cleanly:
 ```bash
 # SSH into backend EC2
 cd /home/ubuntu/AgriConnect
-AWS_REGION=us-east-1 bash scripts/backend-update.sh
+AWS_REGION=ap-south-1 bash scripts/backend-update.sh
 ```
 
 ### Update Frontend
@@ -742,7 +741,7 @@ mysql -h <RDS_ENDPOINT> -u admin -p agriconnect
 # On the backend EC2, test that the IAM role can read secrets
 aws secretsmanager get-secret-value \
   --secret-id agriconnect/dev/database \
-  --region us-east-1 \
+  --region ap-south-1 \
   --query SecretString \
   --output text
 # Should print the JSON with your database credentials
