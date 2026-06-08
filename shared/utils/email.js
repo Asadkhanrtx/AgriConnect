@@ -9,14 +9,16 @@ async function sendEmail({ to, subject, html, text }) {
       return;
     }
 
-    const transporter = nodemailer.createTransporter({
+    const port = parseInt(emailConfig.smtp_port) || 587;
+    const transporter = nodemailer.createTransport({
       host: emailConfig.smtp_host || 'smtp.gmail.com',
-      port: parseInt(emailConfig.smtp_port) || 587,
-      secure: false,
+      port,
+      secure: port === 465,
       auth: {
         user: emailConfig.smtp_user,
         pass: emailConfig.smtp_password
-      }
+      },
+      tls: { rejectUnauthorized: false }
     });
 
     await transporter.sendMail({

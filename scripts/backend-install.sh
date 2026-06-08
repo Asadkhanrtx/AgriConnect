@@ -20,6 +20,25 @@ if [ -z "$AWS_REGION" ]; then
 fi
 export AWS_REGION
 echo "  AWS Region: $AWS_REGION"
+
+if [ -z "$SNS_TOPIC_ARN" ]; then
+  echo "  SNS Topic ARN is used for payment release and weather alerts."
+  echo "  Format: arn:aws:sns:<region>:<account-id>:AgriConnect-WeatherAlerts"
+  read -rp "Enter SNS Topic ARN (or press Enter to skip for now): " SNS_TOPIC_ARN
+fi
+export SNS_TOPIC_ARN
+if [ -n "$SNS_TOPIC_ARN" ]; then
+  echo "  SNS Topic ARN: $SNS_TOPIC_ARN"
+else
+  echo "  SNS Topic ARN: (not set — payment SNS will be skipped)"
+fi
+
+# Persist config so backend-update.sh can reuse it without re-prompting
+{
+  echo "export AWS_REGION='$AWS_REGION'"
+  [ -n "$SNS_TOPIC_ARN" ] && echo "export SNS_TOPIC_ARN='$SNS_TOPIC_ARN'"
+} > /home/ubuntu/.agriconnect-config
+chmod 600 /home/ubuntu/.agriconnect-config
 echo ""
 
 # ── 1. System packages ────────────────────────────────────────────────────────
@@ -87,7 +106,11 @@ for service in "${SERVICES[@]}"; do
   NAME="${SERVICE_NAMES[$service]}"
   echo "  Starting $NAME..."
   cd "$PROJECT_ROOT/services/$service"
-  AWS_REGION=$AWS_REGION pm2 start index.js --name "$NAME"
+  if [ "$service" = "order-service" ] && [ -n "$SNS_TOPIC_ARN" ]; then
+    AWS_REGION=$AWS_REGION SNS_TOPIC_ARN=$SNS_TOPIC_ARN pm2 start index.js --name "$NAME"
+  else
+    AWS_REGION=$AWS_REGION pm2 start index.js --name "$NAME"
+  fi
 done
 
 # Persist process list so PM2 restores it on EC2 reboot

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   AppBar, Toolbar, Typography, Button, Box, Chip, IconButton,
-  Badge, Tooltip, Avatar, Popover, List, ListItem, ListItemText,
-  ListItemAvatar, Divider, CircularProgress
+  Badge, Tooltip, Avatar, Popover, Divider, CircularProgress
 } from '@mui/material';
 import GrassIcon from '@mui/icons-material/Grass';
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -16,6 +15,7 @@ const ROLE_COLORS = { FARMER: 'success', BUYER: 'info', ADMIN: 'warning' };
 const ROLE_LABELS = { FARMER: 'Farmer', BUYER: 'Buyer', ADMIN: 'Admin' };
 
 function timeAgo(dateStr) {
+  if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return 'just now';
@@ -42,7 +42,6 @@ const Navbar = ({ user, setUser }) => {
       .catch(() => {});
   }, [user]);
 
-  // Poll unread count every 30 seconds
   useEffect(() => {
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
@@ -54,7 +53,7 @@ const Navbar = ({ user, setUser }) => {
     setNotifLoading(true);
     try {
       const res = await axios.get('/api/notifications', { headers: headers() });
-      setNotifications(res.data.slice(0, 15));
+      setNotifications(Array.isArray(res.data) ? res.data.slice(0, 15) : []);
     } catch {
       setNotifications([]);
     } finally {
@@ -94,88 +93,96 @@ const Navbar = ({ user, setUser }) => {
   const popoverOpen = Boolean(notifAnchor);
 
   return (
-    <AppBar position="static" elevation={0} sx={{
-      background: 'linear-gradient(135deg, #1B5E20 0%, #2E7D32 60%, #388E3C 100%)',
-      borderBottom: '1px solid rgba(255,255,255,0.1)'
-    }}>
-      <Toolbar sx={{ px: { xs: 2, md: 4 } }}>
-        <Box display="flex" alignItems="center" sx={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
-          <GrassIcon sx={{ mr: 1.5, fontSize: 28 }} />
-          <Typography variant="h6" fontWeight="bold" letterSpacing={0.5}>
-            AgriConnect
-          </Typography>
-        </Box>
-
-        <Box sx={{ flexGrow: 1 }} />
-
-        {user ? (
-          <Box display="flex" alignItems="center" gap={1.5}>
-            <Chip
-              label={ROLE_LABELS[user.role] || user.role}
-              color={ROLE_COLORS[user.role] || 'default'}
-              size="small"
-              sx={{ fontWeight: 600, color: 'white', borderColor: 'rgba(255,255,255,0.5)', bgcolor: 'rgba(255,255,255,0.15)' }}
-              variant="outlined"
-            />
-
-            <Tooltip title="Notifications">
-              <IconButton color="inherit" size="small" onClick={handleBellClick}>
-                <Badge badgeContent={unreadCount} color="error" max={99}>
-                  {unreadCount > 0 ? <NotificationsIcon /> : <NotificationsNoneIcon />}
-                </Badge>
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title={`${user.first_name} ${user.last_name}`}>
-              <Avatar sx={{ bgcolor: 'secondary.main', color: 'black', width: 34, height: 34, fontSize: 13, fontWeight: 700 }}>
-                {initials}
-              </Avatar>
-            </Tooltip>
-
-            <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' }, opacity: 0.9 }}>
-              {user.first_name}
+    <>
+      <AppBar position="static" elevation={0} sx={{
+        background: 'linear-gradient(135deg, #1B5E20 0%, #2E7D32 60%, #388E3C 100%)',
+        borderBottom: '1px solid rgba(255,255,255,0.1)'
+      }}>
+        <Toolbar sx={{ px: { xs: 2, md: 4 } }}>
+          <Box display="flex" alignItems="center" sx={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
+            <GrassIcon sx={{ mr: 1.5, fontSize: 28 }} />
+            <Typography variant="h6" fontWeight="bold" letterSpacing={0.5}>
+              AgriConnect
             </Typography>
-
-            <Tooltip title="Logout">
-              <IconButton color="inherit" size="small" onClick={handleLogout}>
-                <LogoutIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
           </Box>
-        ) : (
-          <Box display="flex" gap={1}>
-            <Button color="inherit" onClick={() => navigate('/login')} variant="text">Login</Button>
-            <Button
-              onClick={() => navigate('/register')}
-              variant="contained"
-              sx={{ bgcolor: 'secondary.main', color: 'black', '&:hover': { bgcolor: 'secondary.light' } }}
-            >
-              Register
-            </Button>
-          </Box>
-        )}
-      </Toolbar>
 
-      {/* ── Notification Popover ── */}
+          <Box sx={{ flexGrow: 1 }} />
+
+          {user ? (
+            <Box display="flex" alignItems="center" gap={1.5}>
+              <Chip
+                label={ROLE_LABELS[user.role] || user.role}
+                color={ROLE_COLORS[user.role] || 'default'}
+                size="small"
+                sx={{ fontWeight: 600, color: 'white', borderColor: 'rgba(255,255,255,0.5)', bgcolor: 'rgba(255,255,255,0.15)' }}
+                variant="outlined"
+              />
+
+              <Tooltip title="Notifications">
+                <IconButton color="inherit" size="small" onClick={handleBellClick}>
+                  <Badge badgeContent={unreadCount} color="error" max={99}>
+                    {unreadCount > 0 ? <NotificationsIcon /> : <NotificationsNoneIcon />}
+                  </Badge>
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title={`${user.first_name} ${user.last_name}`}>
+                <Avatar sx={{ bgcolor: 'secondary.main', color: 'black', width: 34, height: 34, fontSize: 13, fontWeight: 700 }}>
+                  {initials}
+                </Avatar>
+              </Tooltip>
+
+              <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' }, opacity: 0.9 }}>
+                {user.first_name}
+              </Typography>
+
+              <Tooltip title="Logout">
+                <IconButton color="inherit" size="small" onClick={handleLogout}>
+                  <LogoutIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          ) : (
+            <Box display="flex" gap={1}>
+              <Button color="inherit" onClick={() => navigate('/login')} variant="text">Login</Button>
+              <Button
+                onClick={() => navigate('/register')}
+                variant="contained"
+                sx={{ bgcolor: 'secondary.main', color: 'black', '&:hover': { bgcolor: 'secondary.light' } }}
+              >
+                Register
+              </Button>
+            </Box>
+          )}
+        </Toolbar>
+      </AppBar>
+
+      {/* ── Notification Popover — rendered outside AppBar to avoid stacking context issues ── */}
       <Popover
         open={popoverOpen}
         anchorEl={notifAnchor}
         onClose={handleClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        PaperProps={{ sx: { width: 380, maxHeight: 480, borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' } }}
+        PaperProps={{
+          sx: { width: 380, maxHeight: 480, borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', overflow: 'hidden' }
+        }}
       >
         {/* Header */}
         <Box display="flex" justifyContent="space-between" alignItems="center"
           sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography fontWeight={700} variant="subtitle1">
-            Notifications {unreadCount > 0 && (
-              <Typography component="span" variant="caption"
-                sx={{ ml: 1, px: 1, py: 0.3, bgcolor: 'error.main', color: 'white', borderRadius: 10, fontWeight: 700 }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Typography variant="subtitle2" fontWeight={700}>Notifications</Typography>
+            {unreadCount > 0 && (
+              <Box sx={{
+                px: 0.75, py: 0.1, bgcolor: 'error.main', color: 'white',
+                borderRadius: 10, fontSize: 11, fontWeight: 700, lineHeight: '18px',
+                minWidth: 18, textAlign: 'center'
+              }}>
                 {unreadCount}
-              </Typography>
+              </Box>
             )}
-          </Typography>
+          </Box>
           {unreadCount > 0 && (
             <Tooltip title="Mark all read">
               <IconButton size="small" onClick={markAllRead} color="primary">
@@ -185,62 +192,63 @@ const Navbar = ({ user, setUser }) => {
           )}
         </Box>
 
-        {/* Notification list */}
-        {notifLoading ? (
-          <Box display="flex" justifyContent="center" py={4}>
-            <CircularProgress size={28} color="primary" />
-          </Box>
-        ) : notifications.length === 0 ? (
-          <Box textAlign="center" py={5}>
-            <NotificationsNoneIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-            <Typography variant="body2" color="textSecondary">No notifications yet</Typography>
-          </Box>
-        ) : (
-          <List disablePadding sx={{ overflow: 'auto', maxHeight: 380 }}>
-            {notifications.map((n, idx) => (
-              <React.Fragment key={n.id}>
-                <ListItem
-                  alignItems="flex-start"
+        {/* Body */}
+        <Box sx={{ overflowY: 'auto', maxHeight: 400 }}>
+          {notifLoading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress size={28} color="primary" />
+            </Box>
+          ) : notifications.length === 0 ? (
+            <Box textAlign="center" py={5}>
+              <NotificationsNoneIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">No notifications yet</Typography>
+            </Box>
+          ) : (
+            notifications.map((n, idx) => (
+              <React.Fragment key={n.id ?? idx}>
+                <Box
                   onClick={() => markOneRead(n)}
                   sx={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 1.5,
+                    px: 2.5,
+                    py: 1.5,
                     cursor: n.is_read ? 'default' : 'pointer',
                     bgcolor: n.is_read ? 'transparent' : 'rgba(46,125,50,0.05)',
                     '&:hover': { bgcolor: 'rgba(0,0,0,0.03)' },
-                    py: 1.5, px: 2.5
                   }}
                 >
-                  <ListItemAvatar sx={{ minWidth: 36, mt: 0.5 }}>
-                    <Box sx={{
-                      width: 8, height: 8, borderRadius: '50%',
-                      bgcolor: n.is_read ? 'transparent' : 'success.main',
-                      mt: 0.5
-                    }} />
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={
-                      <Typography variant="body2" fontWeight={n.is_read ? 400 : 700} color="text.primary">
-                        {n.title}
-                      </Typography>
-                    }
-                    secondary={
-                      <>
-                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25, lineHeight: 1.4 }}>
-                          {n.message}
-                        </Typography>
-                        <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5, display: 'block' }}>
-                          {timeAgo(n.created_at)}
-                        </Typography>
-                      </>
-                    }
-                  />
-                </ListItem>
-                {idx < notifications.length - 1 && <Divider component="li" sx={{ mx: 2 }} />}
+                  {/* Unread dot */}
+                  <Box sx={{
+                    width: 8, height: 8, borderRadius: '50%', flexShrink: 0, mt: 0.75,
+                    bgcolor: n.is_read ? 'transparent' : 'success.main',
+                  }} />
+                  {/* Content */}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" fontWeight={n.is_read ? 400 : 700} color="text.primary"
+                      sx={{ lineHeight: 1.4 }}>
+                      {n.title || 'Notification'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary"
+                      sx={{ display: 'block', lineHeight: 1.4, mt: 0.25 }}>
+                      {n.message || ''}
+                    </Typography>
+                    <Typography variant="caption" color="text.disabled"
+                      sx={{ display: 'block', mt: 0.5 }}>
+                      {timeAgo(n.created_at)}
+                    </Typography>
+                  </Box>
+                </Box>
+                {idx < notifications.length - 1 && (
+                  <Divider sx={{ mx: 2 }} />
+                )}
               </React.Fragment>
-            ))}
-          </List>
-        )}
+            ))
+          )}
+        </Box>
       </Popover>
-    </AppBar>
+    </>
   );
 };
 
