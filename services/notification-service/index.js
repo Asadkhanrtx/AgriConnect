@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const notificationRoutes = require('./routes/notification');
 const { getDatabaseConnection } = require('agriconnect-shared/db');
+const { startWorker } = require('./workers/sqsWorker');
 
 const app = express();
 app.use(cors());
@@ -16,6 +17,7 @@ const PORT = process.env.PORT || 3005;
 async function startServer() {
   try {
     await getDatabaseConnection();
+    startWorker();
     app.listen(PORT, () => {
       console.log(`Notification Service running on port \${PORT}`);
     });

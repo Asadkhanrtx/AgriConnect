@@ -1745,3 +1745,593 @@ No new secrets are added in Phase 2. The SNS topic ARN is passed as a PM2 enviro
 pm2 restart all
 # Secrets are cached for 5 minutes — restart flushes the cache immediately
 ```
+
+---
+
+## SECTION 18: Phase 3 — SNS→SQS Notification Pipeline
+
+Phase 3 upgrades the notification architecture from direct DB writes inside each service to a proper async event pipeline. All services publish structured events to an SNS topic (`AgriConnect-Events`). SQS delivers them reliably to the notification service, which handles per-user DB notifications and emails — including **farmer-specific weather alerts** routed by city.
+
+> **Read all of Section 18 before starting.** Complete Sections 1–17 first (Phase 1 + Phase 2 must be deployed).
+
+---
+
+### 18.0 New Architecture
+
+```
+Order Service     ─┐
+Marketplace Service─┼──► SNS: AgriConnect-Events ──► SQS: AgriConnect-Notifications-Queue
+Lambda (weather)  ─┘                                          │
+                                                               ▼
+                                                    Notification Service (sqsWorker)
+                                                        polls SQS (long-poll 20s)
+                                                               │
+                                                    ┌──────────┴──────────┐
+                                                    ▼                     ▼
+                                              DB Notification        Email per user
+                                           (per user in DB)       (via SMTP / nodemailer)
+                                                    │
+                                         DLQ: AgriConnect-Notifications-DLQ
+                                         (messages that fail maxReceiveCount times)
+```
+
+**Event types flowing through the pipeline:**
+
+| Event Type | Publisher | Consumers |
+|-----------|-----------|-----------|
+| `NEW_ORDER` | order-service | farmer: DB notification + email |
+| `ORDER_STATUS` | order-service | buyer: DB notification |
+| `PAYMENT_RELEASED` | order-service | farmer + buyer: DB notifications + farmer email |
+| `NEW_BID` | marketplace-service | farmer: DB notification + email |
+| `BID_ACCEPTED` | marketplace-service | buyer: DB notification |
+| `BID_REJECTED` | marketplace-service | buyer: DB notification |
+| `WEATHER_ALERT` | Lambda | all farmers in affected city: DB notification + email |
+
+**Fallback behaviour:** If `EVENTS_TOPIC_ARN` is not configured on a service, it falls back to direct DB writes (same as Phase 2). This means migration can be done service-by-service without downtime.
+
+---
+
+### 18.1 Create the SQS Dead Letter Queue (DLQ)
+
+The DLQ receives messages that could not be processed after the maximum number of retries. Always create the DLQ **before** the main queue.
+
+1. Go to **AWS Console → SQS → Create queue**
+2. Fill in:
+   - **Type**: Standard
+   - **Name**: `AgriConnect-Notifications-DLQ`
+3. Leave all other settings as default
+4. Click **Create queue**
+5. **Copy the Queue ARN** from the queue detail page — looks like:
+   ```
+   arn:aws:sqs:ap-south-1:978594443309:AgriConnect-Notifications-DLQ
+   ```
+   Save this ARN — you need it when creating the main queue.
+6. **Copy the Queue URL** — looks like:
+   ```
+   https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-DLQ
+   ```
+
+---
+
+### 18.2 Create the Main SQS Queue
+
+1. Go to **SQS → Create queue**
+2. Fill in:
+   - **Type**: Standard
+   - **Name**: `AgriConnect-Notifications-Queue`
+3. Under **Configuration**:
+   - **Visibility timeout**: 30 seconds (matches `VisibilityTimeout` in the SQS worker)
+   - **Message retention period**: 4 days
+   - **Delivery delay**: 0 seconds
+   - **Maximum message size**: 256 KB
+   - **Receive message wait time**: 20 seconds ← **important** (enables long polling)
+4. Under **Dead-letter queue**:
+   - Click **Enabled**
+   - **Queue**: `AgriConnect-Notifications-DLQ`
+   - **Maximum receives**: `3` (message moved to DLQ after 3 failed delivery attempts)
+5. Click **Create queue**
+6. **Copy the Queue ARN** — looks like:
+   ```
+   arn:aws:sqs:ap-south-1:978594443309:AgriConnect-Notifications-Queue
+   ```
+7. **Copy the Queue URL** — looks like:
+   ```
+   https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-Queue
+   ```
+
+---
+
+### 18.3 Set the SQS Queue Policy
+
+The SQS queue needs an explicit policy to allow the SNS topic to deliver messages to it.
+
+1. Go to the **`AgriConnect-Notifications-Queue`** detail page
+2. Click the **Access policy** tab → **Edit**
+3. Replace the existing JSON (or merge if it already has a policy) with:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowSNSPublish",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "sns.amazonaws.com"
+      },
+      "Action": "sqs:SendMessage",
+      "Resource": "arn:aws:sqs:ap-south-1:978594443309:AgriConnect-Notifications-Queue",
+      "Condition": {
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"
+        }
+      }
+    }
+  ]
+}
+```
+
+> Replace both `978594443309` with your actual 12-digit AWS account ID.
+
+4. Click **Save**
+
+---
+
+### 18.4 Create the `AgriConnect-Events` SNS Topic
+
+This is a **new, separate** SNS topic from `AgriConnect-WeatherAlerts`. It carries structured JSON application events (not plain-text email alerts).
+
+1. Go to **SNS → Topics → Create topic**
+2. Fill in:
+   - **Type**: Standard
+   - **Name**: `AgriConnect-Events`
+   - Leave all other settings as default
+3. Click **Create topic**
+4. **Copy the Topic ARN**:
+   ```
+   arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events
+   ```
+   Save this — it becomes `EVENTS_TOPIC_ARN`.
+
+> **Do NOT add email subscriptions to this topic.** It delivers JSON events, not human-readable email. Email delivery is handled by the notification service after processing.
+
+---
+
+### 18.5 Subscribe SQS Queue to SNS Topic
+
+1. Go to the **`AgriConnect-Events`** SNS topic detail page
+2. Click **Create subscription**
+3. Fill in:
+   - **Protocol**: Amazon SQS
+   - **Endpoint**: paste the `AgriConnect-Notifications-Queue` ARN:
+     ```
+     arn:aws:sqs:ap-south-1:978594443309:AgriConnect-Notifications-Queue
+     ```
+4. **Uncheck** "Enable raw message delivery" — keep it OFF so the SQS worker receives the full SNS envelope (the worker handles this correctly)
+5. Click **Create subscription**
+6. Status shows **Confirmed** immediately (SQS subscriptions auto-confirm — no email click required)
+
+**Verify the subscription:**
+```bash
+aws sns list-subscriptions-by-topic \
+  --topic-arn arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events \
+  --region ap-south-1
+# Expected: Protocol = "sqs", SubscriptionArn = "arn:aws:sns:..." (not PendingConfirmation)
+```
+
+---
+
+### 18.6 Update IAM Permissions
+
+Two sets of IAM permissions are needed:
+
+#### 18.6.1 Backend EC2 Role — Add SNS + SQS permissions
+
+The backend EC2 needs to publish to `AgriConnect-Events` (SNS). The notification service also needs to receive/delete messages from SQS.
+
+1. Go to **IAM → Policies → AgriConnectBackendPolicy → Edit → JSON**
+2. Add these two statements inside the existing `"Statement": [...]` array:
+
+```json
+,{
+  "Sid": "EventsSNSPublish",
+  "Effect": "Allow",
+  "Action": ["sns:Publish"],
+  "Resource": "arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"
+},
+{
+  "Sid": "NotificationsSQSWorker",
+  "Effect": "Allow",
+  "Action": [
+    "sqs:ReceiveMessage",
+    "sqs:DeleteMessage",
+    "sqs:GetQueueAttributes",
+    "sqs:ChangeMessageVisibility"
+  ],
+  "Resource": [
+    "arn:aws:sqs:ap-south-1:978594443309:AgriConnect-Notifications-Queue",
+    "arn:aws:sqs:ap-south-1:978594443309:AgriConnect-Notifications-DLQ"
+  ]
+}
+```
+
+3. Replace `978594443309` with your AWS account ID
+4. Click **Next** → **Save changes**
+
+**Verify from the backend EC2:**
+```bash
+# Test SQS access
+aws sqs get-queue-attributes \
+  --queue-url https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-Queue \
+  --attribute-names All \
+  --region ap-south-1
+# Should return queue attributes without AccessDeniedException
+```
+
+#### 18.6.2 Lambda Role — Add `AgriConnect-Events` SNS Publish
+
+The Lambda must publish to both SNS topics.
+
+1. Go to **IAM → Roles → AgriConnectLambdaRole**
+2. Click the inline policy `SNSPublishPolicy` → **Edit → JSON**
+3. Replace the Resource array with both topic ARNs:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SNSPublish",
+      "Effect": "Allow",
+      "Action": ["sns:Publish"],
+      "Resource": [
+        "arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts",
+        "arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"
+      ]
+    }
+  ]
+}
+```
+
+4. Click **Next** → **Save changes**
+
+---
+
+### 18.7 Update Lambda Environment Variables
+
+The Lambda now publishes to both `SNS_TOPIC_ARN` (email broadcast) and `EVENTS_TOPIC_ARN` (per-farmer routing).
+
+1. Go to **Lambda → `weather-alert-processor` → Configuration → Environment variables → Edit**
+2. Add a second variable:
+   | Key | Value |
+   |-----|-------|
+   | `EVENTS_TOPIC_ARN` | `arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events` |
+3. Click **Save**
+
+**Verify by running a test:**
+```bash
+# AWS Console → Lambda → Test tab → Create event: {} → Test
+# Look in Log output for:
+# [WeatherAlert] Events published for Mawsynram
+# (only appears when an alert condition is triggered)
+```
+
+---
+
+### 18.8 Deploy Phase 3 Backend
+
+#### A. Fresh install (new EC2)
+
+```bash
+cd /home/ubuntu/AgriConnect
+git pull origin main
+bash scripts/backend-install.sh
+```
+
+The installer now prompts for all four env vars:
+
+```
+Enter your AWS Region (e.g. ap-south-1): ap-south-1
+
+SNS_TOPIC_ARN — AgriConnect-WeatherAlerts (email broadcast)
+Enter SNS_TOPIC_ARN (or press Enter to skip): arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts
+
+EVENTS_TOPIC_ARN — AgriConnect-Events (structured events → SQS → notifications)
+Enter EVENTS_TOPIC_ARN (or press Enter to skip): arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events
+
+NOTIFICATIONS_QUEUE_URL — AgriConnect-Notifications-Queue SQS URL
+Enter NOTIFICATIONS_QUEUE_URL (or press Enter to skip): https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-Queue
+```
+
+All values are saved to `~/.agriconnect-config` and passed to PM2 processes automatically.
+
+#### B. Updating existing Phase 2 backend
+
+```bash
+cd /home/ubuntu/AgriConnect
+git pull origin main
+bash scripts/backend-update.sh
+```
+
+The update script:
+1. Sources `~/.agriconnect-config` — if `EVENTS_TOPIC_ARN` and `NOTIFICATIONS_QUEUE_URL` are missing, prompts for them
+2. Installs new dependencies (`@aws-sdk/client-sqs` in notification-service, `@aws-sdk/client-sns` in shared)
+3. Runs migrations (no new columns needed for Phase 3)
+4. Restarts services with updated env vars:
+   - `agriconnect-market`: picks up `EVENTS_TOPIC_ARN`
+   - `agriconnect-order`: picks up `EVENTS_TOPIC_ARN` (keeps existing `SNS_TOPIC_ARN`)
+   - `agriconnect-notif`: picks up `NOTIFICATIONS_QUEUE_URL` → starts SQS polling worker
+
+**Verify env vars are set:**
+```bash
+pm2 env agriconnect-order   | grep -E "SNS_TOPIC_ARN|EVENTS_TOPIC_ARN"
+pm2 env agriconnect-market  | grep EVENTS_TOPIC_ARN
+pm2 env agriconnect-notif   | grep NOTIFICATIONS_QUEUE_URL
+```
+
+---
+
+### 18.9 Verify the Full Pipeline
+
+#### Step 1 — Send a test message through the pipeline
+
+```bash
+# Publish a test NEW_ORDER event directly to SNS (simulates order-service)
+aws sns publish \
+  --topic-arn arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events \
+  --message '{"type":"NEW_ORDER","farmer_user_id":1,"farmer_email":"farmer1@example.com","farmer_name":"Test Farmer","buyer_name":"Test Buyer","product_name":"Tomatoes","quantity":10,"unit":"kg","total_amount":500,"order_id":999}' \
+  --region ap-south-1
+```
+
+Check notification-service logs:
+```bash
+pm2 logs agriconnect-notif --lines 30
+# Expected:
+# [SQS Worker] Starting — polling https://sqs.ap-south-1.amazonaws.com/...
+# [SQS Worker] Processing event: NEW_ORDER
+# [SQS Worker] Deleted message <messageId>
+```
+
+Check the DB for the created notification:
+```bash
+mysql -h <RDS_ENDPOINT> -u admin -p agriconnect \
+  -e "SELECT * FROM notifications WHERE user_id = 1 ORDER BY created_at DESC LIMIT 1;"
+# Should show a row: title='New Order Received! 🎉'
+```
+
+#### Step 2 — End-to-end order flow test
+
+```bash
+# Get buyer JWT
+TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"buyer1@example.com","password":"password123"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+# Place an order (triggers NEW_ORDER event through SNS→SQS→notification-service)
+curl -X POST http://localhost:3003/api/orders/create \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"listing_id": 1, "quantity": 1}'
+
+# Watch notification-service logs process the event
+pm2 logs agriconnect-notif --lines 20
+# Expected: [SQS Worker] Processing event: NEW_ORDER
+```
+
+#### Step 3 — Test DLQ (optional)
+
+To verify messages go to DLQ after failures, temporarily stop the notification service and publish events:
+
+```bash
+pm2 stop agriconnect-notif
+
+# Publish a test event — it will be received but not deleted (service is down)
+aws sns publish \
+  --topic-arn arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events \
+  --message '{"type":"NEW_ORDER","farmer_user_id":1}' \
+  --region ap-south-1
+
+# After 3 * VisibilityTimeout (3 * 30s = 90s), the message routes to DLQ
+# Check DLQ message count:
+aws sqs get-queue-attributes \
+  --queue-url https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-DLQ \
+  --attribute-names ApproximateNumberOfMessages \
+  --region ap-south-1
+
+# Restart the service
+pm2 start agriconnect-notif
+```
+
+---
+
+### 18.10 Migration from Phase 2 to Phase 3 (No-Downtime)
+
+If you have Phase 2 running and want to migrate without breaking existing functionality:
+
+**Phase 2 state:** order-service and marketplace-service write directly to DB + call sendEmail. No SQS pipeline.
+
+**Goal:** Switch to SNS→SQS pipeline while keeping the fallback active.
+
+#### Step 1 — Create AWS resources first (no code changes yet)
+- Create `AgriConnect-Notifications-DLQ` (Section 18.1)
+- Create `AgriConnect-Notifications-Queue` (Section 18.2)
+- Set queue policy (Section 18.3)
+- Create `AgriConnect-Events` SNS topic (Section 18.4)
+- Subscribe SQS to SNS (Section 18.5)
+- Update IAM permissions (Section 18.6)
+
+At this point, the infrastructure exists but nothing is publishing to it. **Existing functionality is unchanged.**
+
+#### Step 2 — Deploy new code to notification-service only
+```bash
+git pull origin main
+cd services/notification-service && npm install
+# Set NOTIFICATIONS_QUEUE_URL in PM2 env and restart:
+export NOTIFICATIONS_QUEUE_URL="https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-Queue"
+pm2 restart agriconnect-notif --update-env
+pm2 save
+```
+
+Check the SQS worker started:
+```bash
+pm2 logs agriconnect-notif --lines 10
+# Expected: [SQS Worker] Starting — polling https://sqs.ap-south-1.amazonaws.com/...
+```
+
+The notification-service now polls SQS. **Order-service and marketplace-service still write directly to DB — no change yet.**
+
+#### Step 3 — Enable SNS publishing on order-service
+```bash
+export EVENTS_TOPIC_ARN="arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"
+pm2 restart agriconnect-order --update-env
+pm2 save
+```
+
+Order-service now publishes `NEW_ORDER`, `ORDER_STATUS`, `PAYMENT_RELEASED` events to SNS instead of writing directly to DB. The SQS worker handles these events. **Marketplace-service still writes directly.**
+
+#### Step 4 — Enable SNS publishing on marketplace-service
+```bash
+pm2 restart agriconnect-market --update-env
+pm2 save
+```
+
+All services now use the SNS→SQS pipeline.
+
+#### Step 5 — Update Lambda to also publish to EVENTS_TOPIC_ARN
+
+Follow Section 18.7 to add `EVENTS_TOPIC_ARN` to the Lambda environment. Weather alerts now route per-farmer.
+
+#### Rollback procedure
+
+If anything goes wrong, remove the env vars to restore direct-DB fallback:
+```bash
+# Remove EVENTS_TOPIC_ARN from order-service (falls back to direct DB writes)
+pm2 restart agriconnect-order    # EVENTS_TOPIC_ARN still in shell; use pm2 env to check
+# If needed, edit ~/.agriconnect-config and re-run backend-update.sh
+```
+
+The fallback is automatic — services check `if (!process.env.EVENTS_TOPIC_ARN) { /* direct write */ }`.
+
+---
+
+### 18.11 Weather Alert Per-Farmer Routing
+
+In Phase 2, Lambda sent weather alert emails to all SNS subscribers (broadcast). In Phase 3, weather alerts route to farmers registered in the affected city.
+
+**How it works:**
+1. Lambda detects alert condition for city `Mawsynram`
+2. Lambda publishes structured `WEATHER_ALERT` event to `AgriConnect-Events` (in addition to email broadcast to `AgriConnect-WeatherAlerts`)
+3. Event: `{ "type": "WEATHER_ALERT", "alert_type": "HEAVY_RAIN", "city": "Mawsynram", "state": "Meghalaya", ... }`
+4. SQS delivers to notification-service worker
+5. Worker queries `Farmer` table: `WHERE city = 'Mawsynram' AND latitude IS NOT NULL`
+6. For each matching farmer: creates DB notification + sends email
+
+**Verify a weather alert routes correctly:**
+```bash
+# Publish a manual WEATHER_ALERT event
+aws sns publish \
+  --topic-arn arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events \
+  --message '{"type":"WEATHER_ALERT","alert_type":"HEAVY_RAIN","severity":"HIGH","emoji":"🌧️","city":"Mawsynram","state":"Meghalaya","message":"Heavy rain likely (82%)","advice":"Cover all stored produce immediately","temperature":23.1,"rain_probability":82,"windspeed":12}' \
+  --region ap-south-1
+
+# Check notification-service logs
+pm2 logs agriconnect-notif --lines 20
+# Expected:
+# [SQS Worker] WEATHER_ALERT: notifying 2 farmer(s) in Mawsynram
+# (or "no farmers found" if no seeded farmers have city=Mawsynram)
+
+# Verify DB notifications were created for the farmers
+mysql -h <RDS_ENDPOINT> -u admin -p agriconnect \
+  -e "SELECT u.email, n.title, n.message FROM notifications n JOIN users u ON n.user_id = u.id WHERE n.title LIKE '%Weather%' ORDER BY n.created_at DESC LIMIT 5;"
+```
+
+---
+
+### 18.12 Phase 3 Verification Checklist
+
+```
+AWS Resources:
+[ ] SQS queue AgriConnect-Notifications-DLQ exists
+    Command: aws sqs list-queues --queue-name-prefix AgriConnect --region ap-south-1
+[ ] SQS queue AgriConnect-Notifications-Queue exists with DLQ configured
+    Console: SQS → AgriConnect-Notifications-Queue → Dead-letter queue tab
+[ ] Queue access policy allows sns.amazonaws.com to SendMessage
+    Console: SQS → AgriConnect-Notifications-Queue → Access policy tab
+[ ] SNS topic AgriConnect-Events exists
+    Command: aws sns list-topics --region ap-south-1 | grep AgriConnect-Events
+[ ] SQS subscription to AgriConnect-Events is Confirmed (not PendingConfirmation)
+    Command: aws sns list-subscriptions-by-topic --topic-arn <EVENTS_TOPIC_ARN> --region ap-south-1
+
+IAM:
+[ ] AgriConnectBackendPolicy includes sns:Publish for AgriConnect-Events
+[ ] AgriConnectBackendPolicy includes sqs:ReceiveMessage/DeleteMessage for both SQS queues
+[ ] AgriConnectLambdaRole SNSPublishPolicy includes both SNS topic ARNs
+
+Backend Services:
+[ ] agriconnect-order has EVENTS_TOPIC_ARN in PM2 env
+    Command: pm2 env agriconnect-order | grep EVENTS_TOPIC_ARN
+[ ] agriconnect-market has EVENTS_TOPIC_ARN in PM2 env
+    Command: pm2 env agriconnect-market | grep EVENTS_TOPIC_ARN
+[ ] agriconnect-notif has NOTIFICATIONS_QUEUE_URL in PM2 env
+    Command: pm2 env agriconnect-notif | grep NOTIFICATIONS_QUEUE_URL
+[ ] notification-service SQS worker is polling
+    Command: pm2 logs agriconnect-notif --lines 5 | grep "SQS Worker"
+
+Lambda:
+[ ] weather-alert-processor has EVENTS_TOPIC_ARN environment variable set
+[ ] Lambda test publishes to both SNS topics (check Log output for "Events published")
+
+End-to-End Pipeline:
+[ ] Placing an order triggers NEW_ORDER event via SNS→SQS
+    Command: pm2 logs agriconnect-notif --lines 10 | grep "NEW_ORDER"
+[ ] Farmer receives DB notification after order is placed
+    SQL: SELECT * FROM notifications ORDER BY created_at DESC LIMIT 3;
+[ ] Placing a bid triggers NEW_BID event
+    Command: pm2 logs agriconnect-notif --lines 10 | grep "NEW_BID"
+[ ] Manual WEATHER_ALERT event routes to farmers in the specified city
+    Command: see Section 18.11 test
+
+DLQ:
+[ ] DLQ message count stays 0 under normal operation
+    Command: aws sqs get-queue-attributes --queue-url <DLQ_URL> --attribute-names ApproximateNumberOfMessages --region ap-south-1
+```
+
+---
+
+### 18.13 Troubleshooting Phase 3
+
+| Symptom | Check | Fix |
+|---------|-------|-----|
+| `[SQS Worker] NOTIFICATIONS_QUEUE_URL not set` in logs | Env var missing | `pm2 env agriconnect-notif \| grep QUEUE`; if missing, re-run `backend-update.sh` with `NOTIFICATIONS_QUEUE_URL` |
+| Worker exits immediately after start | Node version or require error | `pm2 logs agriconnect-notif --lines 20`; look for `MODULE_NOT_FOUND` — run `npm install` in notification-service |
+| `AccessDeniedException` on SQS ReceiveMessage | IAM policy not updated | Add SQS permissions in Section 18.6.1 |
+| Messages accumulating in SQS, not being processed | Worker not running or crashing | Check `pm2 status` — if `errored`, check `pm2 logs agriconnect-notif` |
+| Messages going to DLQ unexpectedly | Processing error in worker | `pm2 logs agriconnect-notif` for the error; check DB connection, model associations |
+| `[Events] Failed to publish NEW_ORDER` | SNS IAM permission missing or wrong ARN | Verify `EVENTS_TOPIC_ARN` value; test: `aws sns publish --topic-arn $EVENTS_TOPIC_ARN --message test --region ap-south-1` from EC2 |
+| Weather alert creates no DB notifications | No farmers with matching city + lat/lon | Check seed data: `SELECT city, latitude FROM farmers LIMIT 5;` — if null, re-seed |
+| SQS subscription status `PendingConfirmation` | Not possible for SQS — auto-confirms | Delete subscription and re-create |
+| SQS subscription status `Not subscribed` | SNS can't deliver to SQS | Check queue access policy in Section 18.3 — `aws:SourceArn` must match the exact SNS topic ARN |
+| Order creates notification but no email sent | Email secrets placeholder | Check `pm2 logs agriconnect-notif \| grep EMAIL`; if `SIMULATED`, update `agriconnect/dev/email` in Secrets Manager |
+
+---
+
+### 18.14 Environment Variables Reference (Phase 3)
+
+All environment variables are passed via PM2 (not Secrets Manager) — they are non-sensitive resource identifiers.
+
+| Variable | Service(s) | Example Value | Required |
+|----------|-----------|---------------|----------|
+| `AWS_REGION` | all | `ap-south-1` | Yes |
+| `SNS_TOPIC_ARN` | order-service | `arn:aws:sns:...:AgriConnect-WeatherAlerts` | Phase 2+ |
+| `EVENTS_TOPIC_ARN` | order-service, marketplace-service, Lambda | `arn:aws:sns:...:AgriConnect-Events` | Phase 3 |
+| `NOTIFICATIONS_QUEUE_URL` | notification-service | `https://sqs....amazonaws.com/.../AgriConnect-Notifications-Queue` | Phase 3 |
+
+**Saved automatically** in `~/.agriconnect-config` by `backend-install.sh` and `backend-update.sh`.
+
+**Check all values at once:**
+```bash
+pm2 env agriconnect-order  | grep -E "SNS_TOPIC_ARN|EVENTS_TOPIC_ARN|AWS_REGION"
+pm2 env agriconnect-market | grep -E "EVENTS_TOPIC_ARN|AWS_REGION"
+pm2 env agriconnect-notif  | grep -E "NOTIFICATIONS_QUEUE_URL|AWS_REGION"
+```

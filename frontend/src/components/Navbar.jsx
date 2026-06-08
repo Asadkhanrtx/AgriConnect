@@ -52,7 +52,7 @@ const Navbar = ({ user, setUser }) => {
     setNotifAnchor(e.currentTarget);
     setNotifLoading(true);
     try {
-      const res = await axios.get('/api/notifications', { headers: headers() });
+      const res = await axios.get('/api/notifications/list', { headers: headers() });
       setNotifications(Array.isArray(res.data) ? res.data.slice(0, 15) : []);
     } catch {
       setNotifications([]);

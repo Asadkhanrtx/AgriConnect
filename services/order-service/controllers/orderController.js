@@ -1,6 +1,6 @@
 const { getDatabaseConnection } = require('agriconnect-shared/db');
 const { sendEmail, orderNotificationEmail } = require('agriconnect-shared/utils/email');
-const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+const { publishEvent } = require('agriconnect-shared/utils/eventPublisher');
 
 exports.createOrder = async (req, res) => {
   try {
@@ -44,7 +44,7 @@ exports.createOrder = async (req, res) => {
       return newOrder;
     });
 
-    // ── Notify farmer (DB + email) ───────────────────────────────────────────
+    // ── Notify farmer via SNS→SQS pipeline (fallback: direct DB + email) ──────
     const farmerUserId = listing.Farmer?.user_id;
     const farmerUser = listing.Farmer?.User;
     if (farmerUserId) {
@@ -52,26 +52,40 @@ exports.createOrder = async (req, res) => {
         ? buyer.User.first_name + ' ' + buyer.User.last_name
         : buyer.company_name;
 
-      await Notification.create({
-        user_id: farmerUserId,
-        title: 'New Order Received! 🎉',
-        message: `${buyer.company_name} ordered ${parseFloat(quantity)} ${listing.unit} of ${listing.product_name} for ₹${total_amount.toLocaleString('en-IN')}. Please prepare for dispatch.`
-      }).catch(err => console.error('Order notification failed:', err.message));
+      const published = await publishEvent({
+        type: 'NEW_ORDER',
+        order_id: order.id,
+        farmer_user_id: farmerUserId,
+        farmer_email: farmerUser?.email,
+        farmer_name: farmerUser ? `${farmerUser.first_name} ${farmerUser.last_name}` : 'Farmer',
+        buyer_name: buyerName,
+        product_name: listing.product_name,
+        quantity: parseFloat(quantity),
+        unit: listing.unit,
+        total_amount
+      });
 
-      if (farmerUser?.email) {
-        const farmerName = farmerUser.first_name + ' ' + farmerUser.last_name;
-        sendEmail({
-          to: farmerUser.email,
-          subject: `New Order: ${listing.product_name} from ${buyer.company_name}`,
-          html: orderNotificationEmail({
-            farmerName,
-            productName: listing.product_name,
-            quantity: parseFloat(quantity),
-            unit: listing.unit,
-            totalAmount: total_amount,
-            buyerCompany: buyer.company_name
-          })
-        });
+      if (!published) {
+        await Notification.create({
+          user_id: farmerUserId,
+          title: 'New Order Received! 🎉',
+          message: `${buyer.company_name} ordered ${parseFloat(quantity)} ${listing.unit} of ${listing.product_name} for ₹${total_amount.toLocaleString('en-IN')}. Please prepare for dispatch.`
+        }).catch(err => console.error('Order notification failed:', err.message));
+
+        if (farmerUser?.email) {
+          sendEmail({
+            to: farmerUser.email,
+            subject: `New Order: ${listing.product_name} from ${buyer.company_name}`,
+            html: orderNotificationEmail({
+              farmerName: `${farmerUser.first_name} ${farmerUser.last_name}`,
+              productName: listing.product_name,
+              quantity: parseFloat(quantity),
+              unit: listing.unit,
+              totalAmount: total_amount,
+              buyerCompany: buyer.company_name
+            })
+          });
+        }
       }
     }
 
@@ -160,14 +174,21 @@ exports.updateOrderStatus = async (req, res) => {
 
     await order.update({ delivery_status });
 
-    // Notify buyer of status change
     const buyerUserId = order.Buyer?.User?.id;
-    if (buyerUserId) {
-      const statusMessages = {
-        IN_TRANSIT: `Your order of ${order.ProduceListing.product_name} is now on its way! Track your delivery.`,
-        DELIVERED: `Your order of ${order.ProduceListing.product_name} has been delivered. Thank you for using AgriConnect!`
-      };
-      if (statusMessages[delivery_status]) {
+    if (buyerUserId && ['IN_TRANSIT', 'DELIVERED'].includes(delivery_status)) {
+      const published = await publishEvent({
+        type: 'ORDER_STATUS',
+        order_id: order.id,
+        status: delivery_status,
+        buyer_user_id: buyerUserId,
+        product_name: order.ProduceListing.product_name
+      });
+
+      if (!published) {
+        const statusMessages = {
+          IN_TRANSIT: `Your order of ${order.ProduceListing.product_name} is now on its way! Track your delivery.`,
+          DELIVERED: `Your order of ${order.ProduceListing.product_name} has been delivered. Thank you for using AgriConnect!`
+        };
         await Notification.create({
           user_id: buyerUserId,
           title: delivery_status === 'DELIVERED' ? 'Order Delivered ✅' : 'Order Shipped 🚚',
@@ -209,64 +230,40 @@ exports.confirmDelivery = async (req, res) => {
 
     await order.update({ buyer_confirmed: true, payment_released: true });
 
-    // Release escrow payment
-    await Payment.update(
-      { status: 'RELEASED', released_at: new Date() },
-      { where: { order_id: order.id } }
-    );
+    const payment = await Payment.findOne({ where: { order_id: order.id } });
+    if (payment) {
+      await payment.update({ status: 'RELEASED', released_at: new Date() });
+    }
 
     const farmerUser = order.ProduceListing?.Farmer?.User;
     const farmerUserId = order.ProduceListing?.Farmer?.user_id;
     const productName = order.ProduceListing?.product_name;
-    const amountFmt = parseFloat(order.total_amount).toLocaleString('en-IN');
 
-    // Notify farmer — payment released
-    if (farmerUserId) {
-      await Notification.create({
-        user_id: farmerUserId,
-        title: 'Payment Released! 💰',
-        message: `Payment of ₹${amountFmt} for ${productName} has been released to your account. Order #${order.id} confirmed by buyer.`
-      }).catch(() => {});
-    }
+    const published = await publishEvent({
+      type: 'PAYMENT_RELEASED',
+      order_id: order.id,
+      farmer_user_id: farmerUserId,
+      farmer_email: farmerUser?.email,
+      farmer_name: farmerUser ? `${farmerUser.first_name} ${farmerUser.last_name}` : 'Farmer',
+      buyer_user_id: req.user.id,
+      product_name: productName,
+      amount: parseFloat(order.total_amount)
+    });
 
-    // Notify buyer — confirmation acknowledged
-    await Notification.create({
-      user_id: req.user.id,
-      title: 'Delivery Confirmed ✅',
-      message: `You confirmed delivery of ${productName} (Order #${order.id}). Payment of ₹${amountFmt} has been released to the farmer.`
-    }).catch(() => {});
-
-    // Publish SNS payment-release event (fire-and-forget)
-    const snsTopicArn = process.env.SNS_TOPIC_ARN;
-    if (snsTopicArn) {
-      try {
-        const sns = new SNSClient({ region: process.env.AWS_REGION || 'ap-south-1' });
-        const result = await sns.send(new PublishCommand({
-          TopicArn: snsTopicArn,
-          Subject: `Payment Released — Order #${order.id}`,
-          Message: JSON.stringify({
-            type: 'PAYMENT_RELEASED',
-            order_id: order.id,
-            amount: parseFloat(order.total_amount),
-            product: productName,
-            farmer_email: farmerUser?.email,
-            farmer_name: farmerUser ? `${farmerUser.first_name} ${farmerUser.last_name}` : 'Farmer',
-            timestamp: new Date().toISOString()
-          }),
-          MessageAttributes: {
-            alertType: { DataType: 'String', StringValue: 'PAYMENT_RELEASED' }
-          }
-        }));
-        await Payment.update(
-          { sns_message_id: result.MessageId },
-          { where: { order_id: order.id } }
-        );
-        console.log(`[SNS] Payment release published for order ${order.id}: ${result.MessageId}`);
-      } catch (snsErr) {
-        console.error('[SNS] Payment release publish failed:', snsErr.message);
+    if (!published) {
+      const amountFmt = parseFloat(order.total_amount).toLocaleString('en-IN');
+      if (farmerUserId) {
+        await Notification.create({
+          user_id: farmerUserId,
+          title: 'Payment Released! 💰',
+          message: `Payment of ₹${amountFmt} for ${productName} has been released. Order #${order.id} confirmed by buyer.`
+        }).catch(() => {});
       }
-    } else {
-      console.log(`[PAYMENT] ₹${amountFmt} released for order ${order.id} (SNS_TOPIC_ARN not set)`);
+      await Notification.create({
+        user_id: req.user.id,
+        title: 'Delivery Confirmed ✅',
+        message: `You confirmed delivery of ${productName} (Order #${order.id}). Payment of ₹${amountFmt} released to the farmer.`
+      }).catch(() => {});
     }
 
     res.json({ message: 'Delivery confirmed and payment released', order_id: order.id, amount: order.total_amount });

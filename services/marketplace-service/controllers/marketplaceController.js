@@ -1,5 +1,6 @@
 const { getDatabaseConnection } = require('agriconnect-shared/db');
 const { sendEmail, bidNotificationEmail } = require('agriconnect-shared/utils/email');
+const { publishEvent } = require('agriconnect-shared/utils/eventPublisher');
 
 exports.getCategories = async (req, res) => {
   try {
@@ -168,7 +169,7 @@ exports.createBid = async (req, res) => {
 
     const bid = await Bid.create({ buyer_id: buyer.id, listing_id, amount: parseFloat(amount) });
 
-    // ── Notify farmer (DB + email) ───────────────────────────────────────────
+    // ── Notify farmer via SNS→SQS pipeline (fallback: direct DB + email) ──────
     const farmerUserId = listing.Farmer?.user_id;
     const farmerUser = listing.Farmer?.User;
     if (farmerUserId) {
@@ -176,25 +177,38 @@ exports.createBid = async (req, res) => {
         ? buyer.User.first_name + ' ' + buyer.User.last_name
         : 'A buyer';
 
-      await Notification.create({
-        user_id: farmerUserId,
-        title: 'New Bid Received',
-        message: `${buyerName} from ${buyer.company_name} placed a bid of ₹${parseFloat(amount).toFixed(2)} on your ${listing.product_name} listing.`
-      }).catch(err => console.error('Notification create failed:', err.message));
+      const published = await publishEvent({
+        type: 'NEW_BID',
+        bid_id: bid.id,
+        farmer_user_id: farmerUserId,
+        farmer_email: farmerUser?.email,
+        farmer_name: farmerUser ? `${farmerUser.first_name} ${farmerUser.last_name}` : 'Farmer',
+        buyer_name: buyerName,
+        product_name: listing.product_name,
+        amount: parseFloat(amount),
+        listing_price: listing.price
+      });
 
-      if (farmerUser?.email) {
-        const farmerName = farmerUser.first_name + ' ' + farmerUser.last_name;
-        sendEmail({
-          to: farmerUser.email,
-          subject: `New Bid on your ${listing.product_name} listing`,
-          html: bidNotificationEmail({
-            farmerName,
-            buyerName: buyer.company_name,
-            productName: listing.product_name,
-            bidAmount: amount,
-            listingPrice: listing.price
-          })
-        });
+      if (!published) {
+        await Notification.create({
+          user_id: farmerUserId,
+          title: 'New Bid Received',
+          message: `${buyerName} from ${buyer.company_name} placed a bid of ₹${parseFloat(amount).toFixed(2)} on your ${listing.product_name} listing.`
+        }).catch(err => console.error('Notification create failed:', err.message));
+
+        if (farmerUser?.email) {
+          sendEmail({
+            to: farmerUser.email,
+            subject: `New Bid on your ${listing.product_name} listing`,
+            html: bidNotificationEmail({
+              farmerName: `${farmerUser.first_name} ${farmerUser.last_name}`,
+              buyerName: buyer.company_name,
+              productName: listing.product_name,
+              bidAmount: amount,
+              listingPrice: listing.price
+            })
+          });
+        }
       }
     }
 
@@ -244,7 +258,6 @@ exports.getMyBids = async (req, res) => {
   }
 };
 
-// Farmer: all bids received on their listings
 exports.getReceivedBids = async (req, res) => {
   try {
     const sequelize = await getDatabaseConnection();
@@ -296,14 +309,23 @@ exports.acceptBid = async (req, res) => {
       where: { listing_id: bid.listing_id, id: { [Op.ne]: bid.id } }
     });
 
-    // Notify buyer
     const buyerUserId = bid.Buyer?.User?.id;
     if (buyerUserId) {
-      await Notification.create({
-        user_id: buyerUserId,
-        title: 'Bid Accepted!',
-        message: `Your bid of ₹${parseFloat(bid.amount).toFixed(2)} on ${bid.ProduceListing.product_name} has been accepted by the farmer.`
-      }).catch(() => {});
+      const published = await publishEvent({
+        type: 'BID_ACCEPTED',
+        bid_id: bid.id,
+        buyer_user_id: buyerUserId,
+        product_name: bid.ProduceListing.product_name,
+        amount: parseFloat(bid.amount)
+      });
+
+      if (!published) {
+        await Notification.create({
+          user_id: buyerUserId,
+          title: 'Bid Accepted!',
+          message: `Your bid of ₹${parseFloat(bid.amount).toFixed(2)} on ${bid.ProduceListing.product_name} has been accepted by the farmer.`
+        }).catch(() => {});
+      }
     }
 
     res.json(bid);
@@ -332,11 +354,20 @@ exports.rejectBid = async (req, res) => {
 
     const buyerUserId = bid.Buyer?.User?.id;
     if (buyerUserId) {
-      await Notification.create({
-        user_id: buyerUserId,
-        title: 'Bid Declined',
-        message: `Your bid on ${bid.ProduceListing.product_name} was not accepted this time. Browse other listings and try again.`
-      }).catch(() => {});
+      const published = await publishEvent({
+        type: 'BID_REJECTED',
+        bid_id: bid.id,
+        buyer_user_id: buyerUserId,
+        product_name: bid.ProduceListing.product_name
+      });
+
+      if (!published) {
+        await Notification.create({
+          user_id: buyerUserId,
+          title: 'Bid Declined',
+          message: `Your bid on ${bid.ProduceListing.product_name} was not accepted this time. Browse other listings and try again.`
+        }).catch(() => {});
+      }
     }
 
     res.json(bid);

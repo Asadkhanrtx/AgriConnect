@@ -22,21 +22,38 @@ export AWS_REGION
 echo "  AWS Region: $AWS_REGION"
 
 if [ -z "$SNS_TOPIC_ARN" ]; then
-  echo "  SNS Topic ARN is used for payment release and weather alerts."
+  echo ""
+  echo "  SNS_TOPIC_ARN — AgriConnect-WeatherAlerts (email broadcast to subscribers)"
   echo "  Format: arn:aws:sns:<region>:<account-id>:AgriConnect-WeatherAlerts"
-  read -rp "Enter SNS Topic ARN (or press Enter to skip for now): " SNS_TOPIC_ARN
+  read -rp "Enter SNS_TOPIC_ARN (or press Enter to skip): " SNS_TOPIC_ARN
 fi
 export SNS_TOPIC_ARN
-if [ -n "$SNS_TOPIC_ARN" ]; then
-  echo "  SNS Topic ARN: $SNS_TOPIC_ARN"
-else
-  echo "  SNS Topic ARN: (not set — payment SNS will be skipped)"
+[ -n "$SNS_TOPIC_ARN" ] && echo "  SNS_TOPIC_ARN: $SNS_TOPIC_ARN" || echo "  SNS_TOPIC_ARN: (not set)"
+
+if [ -z "$EVENTS_TOPIC_ARN" ]; then
+  echo ""
+  echo "  EVENTS_TOPIC_ARN — AgriConnect-Events (structured events → SQS → notifications)"
+  echo "  Format: arn:aws:sns:<region>:<account-id>:AgriConnect-Events"
+  read -rp "Enter EVENTS_TOPIC_ARN (or press Enter to skip): " EVENTS_TOPIC_ARN
 fi
+export EVENTS_TOPIC_ARN
+[ -n "$EVENTS_TOPIC_ARN" ] && echo "  EVENTS_TOPIC_ARN: $EVENTS_TOPIC_ARN" || echo "  EVENTS_TOPIC_ARN: (not set — services will use direct DB writes)"
+
+if [ -z "$NOTIFICATIONS_QUEUE_URL" ]; then
+  echo ""
+  echo "  NOTIFICATIONS_QUEUE_URL — AgriConnect-Notifications-Queue SQS URL"
+  echo "  Format: https://sqs.<region>.amazonaws.com/<account-id>/AgriConnect-Notifications-Queue"
+  read -rp "Enter NOTIFICATIONS_QUEUE_URL (or press Enter to skip): " NOTIFICATIONS_QUEUE_URL
+fi
+export NOTIFICATIONS_QUEUE_URL
+[ -n "$NOTIFICATIONS_QUEUE_URL" ] && echo "  NOTIFICATIONS_QUEUE_URL: $NOTIFICATIONS_QUEUE_URL" || echo "  NOTIFICATIONS_QUEUE_URL: (not set — SQS polling disabled)"
 
 # Persist config so backend-update.sh can reuse it without re-prompting
 {
   echo "export AWS_REGION='$AWS_REGION'"
-  [ -n "$SNS_TOPIC_ARN" ] && echo "export SNS_TOPIC_ARN='$SNS_TOPIC_ARN'"
+  [ -n "$SNS_TOPIC_ARN" ]            && echo "export SNS_TOPIC_ARN='$SNS_TOPIC_ARN'"
+  [ -n "$EVENTS_TOPIC_ARN" ]         && echo "export EVENTS_TOPIC_ARN='$EVENTS_TOPIC_ARN'"
+  [ -n "$NOTIFICATIONS_QUEUE_URL" ]  && echo "export NOTIFICATIONS_QUEUE_URL='$NOTIFICATIONS_QUEUE_URL'"
 } > /home/ubuntu/.agriconnect-config
 chmod 600 /home/ubuntu/.agriconnect-config
 echo ""
@@ -94,24 +111,39 @@ echo "[6/6] Starting services with PM2..."
 # Stop all existing instances cleanly before re-starting
 pm2 delete all 2>/dev/null || true
 
-declare -A SERVICE_NAMES=(
-  ["auth-service"]="agriconnect-auth"
-  ["marketplace-service"]="agriconnect-market"
-  ["order-service"]="agriconnect-order"
-  ["media-service"]="agriconnect-media"
-  ["notification-service"]="agriconnect-notif"
-)
-
-for service in "${SERVICES[@]}"; do
-  NAME="${SERVICE_NAMES[$service]}"
-  echo "  Starting $NAME..."
+start_service() {
+  local service=$1
+  local name=$2
+  shift 2
+  local env_vars="$*"
+  echo "  Starting $name..."
   cd "$PROJECT_ROOT/services/$service"
-  if [ "$service" = "order-service" ] && [ -n "$SNS_TOPIC_ARN" ]; then
-    AWS_REGION=$AWS_REGION SNS_TOPIC_ARN=$SNS_TOPIC_ARN pm2 start index.js --name "$NAME"
-  else
-    AWS_REGION=$AWS_REGION pm2 start index.js --name "$NAME"
-  fi
-done
+  env $env_vars pm2 start index.js --name "$name"
+}
+
+# auth-service — no AWS env vars needed
+start_service auth-service agriconnect-auth \
+  AWS_REGION="$AWS_REGION"
+
+# marketplace-service — needs EVENTS_TOPIC_ARN for bid publish
+start_service marketplace-service agriconnect-market \
+  AWS_REGION="$AWS_REGION" \
+  EVENTS_TOPIC_ARN="$EVENTS_TOPIC_ARN"
+
+# order-service — needs SNS_TOPIC_ARN (legacy) + EVENTS_TOPIC_ARN
+start_service order-service agriconnect-order \
+  AWS_REGION="$AWS_REGION" \
+  SNS_TOPIC_ARN="$SNS_TOPIC_ARN" \
+  EVENTS_TOPIC_ARN="$EVENTS_TOPIC_ARN"
+
+# media-service — no AWS env vars needed
+start_service media-service agriconnect-media \
+  AWS_REGION="$AWS_REGION"
+
+# notification-service — needs NOTIFICATIONS_QUEUE_URL for SQS polling
+start_service notification-service agriconnect-notif \
+  AWS_REGION="$AWS_REGION" \
+  NOTIFICATIONS_QUEUE_URL="$NOTIFICATIONS_QUEUE_URL"
 
 # Persist process list so PM2 restores it on EC2 reboot
 pm2 save
@@ -142,7 +174,9 @@ for port in 3001 3002 3003 3004 3005; do
 done
 echo ""
 echo "  Useful commands:"
-echo "    pm2 status          — process list"
-echo "    pm2 logs            — all logs"
-echo "    pm2 restart all     — restart everything"
+echo "    pm2 status                   — process list"
+echo "    pm2 logs                     — all logs"
+echo "    pm2 restart all              — restart everything"
+echo "    pm2 env agriconnect-order    — verify env vars for order-service"
+echo "    pm2 env agriconnect-notif    — verify NOTIFICATIONS_QUEUE_URL"
 echo "=============================================="

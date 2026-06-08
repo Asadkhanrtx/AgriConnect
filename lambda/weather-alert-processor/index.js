@@ -3,11 +3,14 @@
  *
  * Triggered by EventBridge every 15 minutes.
  * Checks Open-Meteo weather for high-rainfall farmer locations.
- * Publishes SNS alert if rain probability > 70% or storm/flood codes detected.
+ * Publishes to two SNS topics:
+ *   SNS_TOPIC_ARN    — AgriConnect-WeatherAlerts (email broadcast to subscribers)
+ *   EVENTS_TOPIC_ARN — AgriConnect-Events (structured event → SQS → per-farmer DB notifications)
  *
  * Environment variables required:
- *   SNS_TOPIC_ARN  — AgriConnect-WeatherAlerts topic ARN
- *   AWS_REGION     — e.g. ap-south-1 (injected automatically by Lambda runtime)
+ *   SNS_TOPIC_ARN    — AgriConnect-WeatherAlerts topic ARN
+ *   EVENTS_TOPIC_ARN — AgriConnect-Events topic ARN (optional; skipped if not set)
+ *   AWS_REGION       — e.g. ap-south-1 (injected automatically by Lambda runtime)
  */
 
 const https = require('https');
@@ -120,7 +123,6 @@ ${loc.farmerCount} AgriConnect farmer(s) in this area have been notified.
         TopicArn: snsTopicArn,
         Subject: `${alert.emoji} Weather Alert: ${alert.type} in ${loc.city}, ${loc.state}`,
         Message: emailBody,
-        MessageStructure: undefined, // plain text for email subscribers
         MessageAttributes: {
           alertType:   { DataType: 'String', StringValue: alert.type },
           severity:    { DataType: 'String', StringValue: alert.severity },
@@ -130,6 +132,36 @@ ${loc.farmerCount} AgriConnect farmer(s) in this area have been notified.
 
       alerts.push({ location: loc.city, alert: alert.type, messageId: result.MessageId });
       console.log(`[WeatherAlert] SNS published for ${loc.city}: ${result.MessageId}`);
+
+      // Publish structured event to AgriConnect-Events → SQS → per-farmer notifications
+      const eventsTopicArn = process.env.EVENTS_TOPIC_ARN;
+      if (eventsTopicArn) {
+        try {
+          await sns.send(new PublishCommand({
+            TopicArn: eventsTopicArn,
+            Message: JSON.stringify({
+              type: 'WEATHER_ALERT',
+              alert_type: alert.type,
+              severity: alert.severity,
+              emoji: alert.emoji,
+              city: loc.city,
+              state: loc.state,
+              message: alert.msg,
+              advice: getAdvice(alert.type),
+              temperature: weather.temp,
+              rain_probability: weather.rainProb,
+              windspeed: weather.wind,
+              timestamp: new Date().toISOString(),
+            }),
+            MessageAttributes: {
+              eventType: { DataType: 'String', StringValue: 'WEATHER_ALERT' },
+            }
+          }));
+          console.log(`[WeatherAlert] Events published for ${loc.city}`);
+        } catch (evErr) {
+          console.error(`[WeatherAlert] Events publish failed for ${loc.city}:`, evErr.message);
+        }
+      }
 
     } catch (err) {
       console.error(`[WeatherAlert] Error for ${loc.city}:`, err.message);
