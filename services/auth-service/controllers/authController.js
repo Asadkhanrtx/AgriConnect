@@ -27,7 +27,11 @@ exports.register = async (req, res) => {
         await Farmer.create({
           user_id: user.id,
           farm_name: extra_data?.farm_name || 'My Farm',
-          location: extra_data?.location || 'Unknown'
+          location: extra_data?.location || extra_data?.city || 'Unknown',
+          city: extra_data?.city || null,
+          state: extra_data?.state || null,
+          latitude: extra_data?.lat || null,
+          longitude: extra_data?.lon || null
         }, { transaction: t });
       } else if (role === 'BUYER') {
         await Buyer.create({

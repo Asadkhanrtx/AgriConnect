@@ -11,8 +11,32 @@ import BusinessIcon from '@mui/icons-material/Business';
 import AgricultureIcon from '@mui/icons-material/Agriculture';
 import GrassIcon from '@mui/icons-material/Grass';
 import PhoneIcon from '@mui/icons-material/Phone';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+
+const LOCATION_OPTIONS = [
+  { label: 'Mawsynram, Meghalaya',    city: 'Mawsynram',   state: 'Meghalaya',       lat: 25.2967, lon: 91.5833 },
+  { label: 'Cherrapunji, Meghalaya',  city: 'Cherrapunji', state: 'Meghalaya',       lat: 25.2844, lon: 91.7267 },
+  { label: 'Shillong, Meghalaya',     city: 'Shillong',    state: 'Meghalaya',       lat: 25.5788, lon: 91.8933 },
+  { label: 'Gangtok, Sikkim',         city: 'Gangtok',     state: 'Sikkim',          lat: 27.3389, lon: 88.6065 },
+  { label: 'Agumbe, Karnataka',       city: 'Agumbe',      state: 'Karnataka',       lat: 13.5025, lon: 75.0929 },
+  { label: 'Kochi, Kerala',           city: 'Kochi',       state: 'Kerala',          lat:  9.9312, lon: 76.2673 },
+  { label: 'Mangalore, Karnataka',    city: 'Mangalore',   state: 'Karnataka',       lat: 12.9141, lon: 74.8560 },
+  { label: 'Nashik, Maharashtra',     city: 'Nashik',      state: 'Maharashtra',     lat: 19.9975, lon: 73.7898 },
+  { label: 'Pune, Maharashtra',       city: 'Pune',        state: 'Maharashtra',     lat: 18.5204, lon: 73.8567 },
+  { label: 'Amritsar, Punjab',        city: 'Amritsar',    state: 'Punjab',          lat: 31.6340, lon: 74.8723 },
+  { label: 'Ludhiana, Punjab',        city: 'Ludhiana',    state: 'Punjab',          lat: 30.9010, lon: 75.8573 },
+  { label: 'Hyderabad, Telangana',    city: 'Hyderabad',   state: 'Telangana',       lat: 17.3850, lon: 78.4867 },
+  { label: 'Coimbatore, Tamil Nadu',  city: 'Coimbatore',  state: 'Tamil Nadu',      lat: 11.0168, lon: 76.9558 },
+  { label: 'Bhopal, Madhya Pradesh',  city: 'Bhopal',      state: 'Madhya Pradesh',  lat: 23.2599, lon: 77.4126 },
+  { label: 'Patna, Bihar',            city: 'Patna',       state: 'Bihar',           lat: 25.5941, lon: 85.1376 },
+  { label: 'Delhi',                   city: 'Delhi',       state: 'Delhi',           lat: 28.6139, lon: 77.2090 },
+  { label: 'Mumbai, Maharashtra',     city: 'Mumbai',      state: 'Maharashtra',     lat: 19.0760, lon: 72.8777 },
+  { label: 'Bangalore, Karnataka',    city: 'Bangalore',   state: 'Karnataka',       lat: 12.9716, lon: 77.5946 },
+  { label: 'Chennai, Tamil Nadu',     city: 'Chennai',     state: 'Tamil Nadu',      lat: 13.0827, lon: 80.2707 },
+  { label: 'Kolkata, West Bengal',    city: 'Kolkata',     state: 'West Bengal',     lat: 22.5726, lon: 88.3639 },
+];
 
 const ROLE_INFO = {
   FARMER: {
@@ -37,7 +61,7 @@ const Register = ({ setUser }) => {
     email: '',
     phone: '',
     password: '',
-    extra_data: { farm_name: '', location: '', company_name: '' }
+    extra_data: { farm_name: '', location: '', city: '', state: '', lat: null, lon: null, company_name: '' }
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -192,19 +216,35 @@ const Register = ({ setUser }) => {
 
             {/* Role-specific field */}
             {formData.role === 'FARMER' ? (
-              <Box display="flex" gap={2} mb={2}>
+              <>
                 <TextField
-                  fullWidth label="Farm Name" required
+                  fullWidth label="Farm Name" required sx={{ mb: 2 }}
                   value={formData.extra_data.farm_name}
                   onChange={e => setExtra('farm_name', e.target.value)}
                   InputProps={{ startAdornment: <InputAdornment position="start"><AgricultureIcon color="action" fontSize="small" /></InputAdornment> }}
                 />
-                <TextField
-                  fullWidth label="Location (City, State)"
-                  value={formData.extra_data.location}
-                  onChange={e => setExtra('location', e.target.value)}
-                />
-              </Box>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Farm Location</InputLabel>
+                  <Select
+                    value={formData.extra_data.location}
+                    label="Farm Location"
+                    onChange={e => {
+                      const opt = LOCATION_OPTIONS.find(o => o.label === e.target.value);
+                      if (opt) {
+                        setFormData(prev => ({
+                          ...prev,
+                          extra_data: { ...prev.extra_data, location: opt.label, city: opt.city, state: opt.state, lat: opt.lat, lon: opt.lon }
+                        }));
+                      }
+                    }}
+                    startAdornment={<InputAdornment position="start"><LocationOnIcon color="action" fontSize="small" /></InputAdornment>}
+                  >
+                    {LOCATION_OPTIONS.map(opt => (
+                      <MenuItem key={opt.label} value={opt.label}>{opt.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </>
             ) : (
               <TextField
                 fullWidth label="Company Name" required sx={{ mb: 2 }}

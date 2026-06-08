@@ -943,3 +943,362 @@ bash scripts/frontend-install.sh
 ```
 
 > The frontend install script rebuilds the React app (picks up all UI changes) and re-deploys to `/var/www/agriconnect`.
+
+---
+
+## SECTION 17: Phase 2 — AWS Integrations, Payment Workflow, Weather Alerts
+
+Phase 2 adds: SNS payment release, Lambda weather alerts, EventBridge schedule, farmer location/weather widget, delivery confirmation, and notification center.
+
+---
+
+### 17.1 New Database Columns (auto-migrated via Sequelize alter)
+
+No manual SQL needed. When you run `node scripts/migrate.js`, Sequelize adds:
+
+| Table | New Column | Type | Purpose |
+|-------|-----------|------|---------|
+| `farmers` | `city` | VARCHAR | Structured city name |
+| `farmers` | `state` | VARCHAR | State name |
+| `farmers` | `latitude` | FLOAT | For weather API |
+| `farmers` | `longitude` | FLOAT | For weather API |
+| `orders` | `buyer_confirmed` | TINYINT(1) | Buyer clicked "Confirm Delivery" |
+| `orders` | `payment_released` | TINYINT(1) | Payment escrow released |
+| `payments` | (new table) | — | Escrow tracking per order |
+
+**Re-run migration after pulling Phase 2 code:**
+```bash
+cd /home/ubuntu/AgriConnect/shared
+AWS_REGION=ap-south-1 node scripts/migrate.js
+```
+
+**Re-seed with Phase 2 data (farmers now have lat/lon):**
+```bash
+AWS_REGION=ap-south-1 node scripts/seed.js --force
+```
+
+---
+
+### 17.2 SNS Topic — `AgriConnect-WeatherAlerts`
+
+This single SNS topic handles both **weather alerts** (Lambda) and **payment release** notifications (order-service).
+
+#### Create the topic
+
+Go to **SNS → Topics → Create topic**:
+- Type: **Standard**
+- Name: `AgriConnect-WeatherAlerts`
+- Click **Create topic**
+- Copy the **Topic ARN** — you will use it in the next steps
+
+#### Add email subscriptions (farmer emails)
+
+Go to **SNS → Topics → AgriConnect-WeatherAlerts → Create subscription**:
+- Protocol: **Email**
+- Endpoint: farmer email address (e.g. `farmer1@example.com`)
+- Click **Create subscription**
+- Each subscriber must **confirm** via the confirmation email sent to their inbox
+
+For demo, subscribe your own email:
+1. Create subscription → Email → your email
+2. Check inbox → click "Confirm subscription"
+3. You will now receive all weather alerts and payment release notifications
+
+#### Test the topic manually
+```bash
+aws sns publish \
+  --topic-arn arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts \
+  --subject "Test Alert" \
+  --message "AgriConnect SNS is working correctly." \
+  --region ap-south-1
+```
+
+---
+
+### 17.3 IAM Updates — New Permissions Required
+
+Add these permissions to the **AgriConnectEC2Policy** (Backend EC2 IAM role) and the **Lambda execution role**:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["sns:Publish"],
+      "Resource": "arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue"],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:agriconnect/dev/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:*:*:*"
+    }
+  ]
+}
+```
+
+Go to **IAM → Policies → AgriConnectEC2Policy → Edit** and add the `sns:Publish` statement.
+
+---
+
+### 17.4 Order Service — SNS Payment Release
+
+The order-service now publishes an SNS event when a buyer confirms delivery.
+
+**Set `SNS_TOPIC_ARN` in PM2 startup on the backend EC2:**
+
+```bash
+# Stop existing PM2 process
+pm2 stop agriconnect-order
+
+# Restart with SNS topic ARN env variable
+cd /home/ubuntu/AgriConnect/services/order-service
+npm install   # picks up @aws-sdk/client-sns
+
+AWS_REGION=ap-south-1 \
+SNS_TOPIC_ARN=arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts \
+pm2 start index.js --name agriconnect-order
+
+pm2 save
+```
+
+**Or update the PM2 startup script** — edit `/home/ubuntu/AgriConnect/scripts/backend-install.sh` or restart all services with the env var:
+
+```bash
+# Quick way — restart order-service with correct env
+pm2 delete agriconnect-order
+cd /home/ubuntu/AgriConnect/services/order-service
+AWS_REGION=ap-south-1 SNS_TOPIC_ARN=arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts \
+  pm2 start index.js --name agriconnect-order
+pm2 save
+```
+
+**Payment flow end-to-end:**
+1. Buyer places order → Payment record created (status: `HELD`)
+2. Farmer updates order to `IN_TRANSIT` → Buyer notified
+3. Farmer updates order to `DELIVERED` → Buyer notified, "Confirm Delivery" button appears
+4. Buyer clicks "Confirm Delivery" → Payment released, SNS published, both parties notified
+
+**Test payment release:**
+```bash
+# On backend EC2 — confirm order ID 1 as buyer (get token first via login)
+curl -i -X POST http://localhost:3003/api/orders/1/confirm \
+  -H "Authorization: Bearer <BUYER_JWT_TOKEN>" \
+  -H "Content-Type: application/json"
+# Expected: 200 with { message: "Delivery confirmed and payment released" }
+# Check your email for SNS notification
+```
+
+---
+
+### 17.5 Lambda — `weather-alert-processor`
+
+#### Deploy the Lambda
+
+**Step 1 — Package the Lambda:**
+```bash
+# On your local machine (or any machine with Node 18+)
+cd AgriConnect/lambda/weather-alert-processor
+npm install
+zip -r weather-alert-processor.zip . -x "*.git*"
+```
+
+On Windows (PowerShell):
+```powershell
+cd AgriConnect\lambda\weather-alert-processor
+npm install
+Compress-Archive -Path * -DestinationPath weather-alert-processor.zip -Force
+```
+
+**Step 2 — Create the Lambda function:**
+
+Go to **Lambda → Create function**:
+- Author from scratch
+- Function name: `weather-alert-processor`
+- Runtime: **Node.js 20.x**
+- Architecture: x86_64
+- Execution role: Create new role with basic Lambda permissions (then add SNS permissions — see 17.3)
+
+**Step 3 — Upload the zip:**
+- Click **Upload from** → **.zip file**
+- Upload `weather-alert-processor.zip`
+
+**Step 4 — Set environment variable:**
+
+Go to **Configuration → Environment variables → Edit**:
+| Key | Value |
+|-----|-------|
+| `SNS_TOPIC_ARN` | `arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts` |
+
+**Step 5 — Attach SNS Publish permission to Lambda IAM role:**
+
+Go to **IAM → Roles** → find the role created for your Lambda (e.g. `weather-alert-processor-role-xxxx`) → **Add permissions → Attach policies** → search for `AmazonSNSFullAccess` (or create inline policy from 17.3).
+
+**Step 6 — Test the Lambda manually:**
+
+Go to **Lambda → Test** → create a test event with empty JSON `{}` → click **Test**.
+
+Expected output:
+```json
+{
+  "statusCode": 200,
+  "body": "{\"alertsPublished\": 2, \"alerts\": [...]}"
+}
+```
+
+Check your email for weather alert notifications.
+
+---
+
+### 17.6 EventBridge — Scheduled Weather Checks
+
+#### Create the schedule
+
+Go to **EventBridge → Rules → Create rule**:
+- Name: `agriconnect-weather-check`
+- Description: Check weather for farmer locations every 15 minutes
+- Rule type: **Schedule**
+- Schedule pattern: **Rate expression**
+  - Rate: `15 minutes`
+
+**Target:**
+- Target type: **AWS service**
+- Select a target: **Lambda function**
+- Function: `weather-alert-processor`
+
+Click **Create rule**.
+
+#### Verify EventBridge is triggering Lambda
+
+Go to **Lambda → Monitor → Logs** in CloudWatch — you should see invocations every 15 minutes.
+
+```bash
+# Check Lambda logs via AWS CLI
+aws logs tail /aws/lambda/weather-alert-processor --follow --region ap-south-1
+```
+
+---
+
+### 17.7 Weather Widget — Farmer Location Auto-Detection
+
+The `WeatherWidget` component now auto-uses the farmer's registered location (city + lat/lon stored in the `farmers` table). No city picker is shown on the Farmer Dashboard — the widget shows weather for the farmer's actual location.
+
+**Farmer registration** now has a location dropdown with 20 Indian cities (including Mawsynram, Cherrapunji, Agumbe — highest-rainfall areas for demo).
+
+**Seed data** has 6 farmers in Meghalaya (Mawsynram + Cherrapunji + Shillong), making weather alerts easy to demonstrate — these locations frequently have high rain probability.
+
+---
+
+### 17.8 Notification Center
+
+The navbar bell icon now opens a **notification popover** with:
+- List of last 15 notifications (newest first)
+- Unread count badge (polls every 30 seconds)
+- Green dot for unread notifications
+- Click individual notification to mark as read
+- "Mark All Read" button (DoneAll icon)
+
+No deployment steps needed — this is frontend-only, deployed with `frontend-install.sh`.
+
+---
+
+### 17.9 Phase 2 Deployment Steps
+
+**Backend EC2:**
+```bash
+cd /home/ubuntu/AgriConnect
+git pull origin main
+
+# Install new deps (SNS SDK in order-service)
+cd services/order-service && npm install && cd ../..
+cd shared && npm install && cd ..
+
+# Run migration (adds new columns)
+AWS_REGION=ap-south-1 node shared/scripts/migrate.js
+
+# Re-seed with Phase 2 data (lat/lon added to all farmers)
+# WARNING: this truncates and re-seeds all data
+AWS_REGION=ap-south-1 node shared/scripts/seed.js --force
+
+# Restart services with SNS env var for order-service
+pm2 delete all 2>/dev/null || true
+
+pm2 start services/auth-service/index.js         --name agriconnect-auth   -- --env AWS_REGION=ap-south-1
+pm2 start services/marketplace-service/index.js  --name agriconnect-market -- --env AWS_REGION=ap-south-1
+pm2 start services/media-service/index.js        --name agriconnect-media  -- --env AWS_REGION=ap-south-1
+pm2 start services/notification-service/index.js --name agriconnect-notif  -- --env AWS_REGION=ap-south-1
+
+# Order service needs SNS_TOPIC_ARN
+SNS_TOPIC_ARN=arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts \
+  AWS_REGION=ap-south-1 \
+  pm2 start services/order-service/index.js --name agriconnect-order
+
+pm2 save
+
+# Verify all services
+pm2 status
+for port in 3001 3002 3003 3004 3005; do
+  echo -n ":$port → "
+  curl -s http://localhost:$port/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" 2>/dev/null || echo "ERR"
+done
+```
+
+**Frontend EC2:**
+```bash
+cd /home/ubuntu/AgriConnect
+git pull origin main
+bash scripts/frontend-install.sh
+```
+
+---
+
+### 17.10 Phase 2 Verification Checklist
+
+```
+Database:
+[ ] farmers table has columns: city, state, latitude, longitude
+[ ] orders table has columns: buyer_confirmed, payment_released
+[ ] payments table exists
+
+Orders & Payment:
+[ ] POST /api/orders/create → 401 (not 405) when tested without token
+[ ] POST /api/orders/1/confirm → 401 without token
+[ ] Buyer can click "Confirm Delivery" → button changes to "Payment Released"
+[ ] SNS email received after delivery confirmation
+
+Notifications:
+[ ] Bell icon opens popover with notification list
+[ ] Unread badge updates within 30 seconds of new notification
+[ ] "Mark All Read" clears the badge
+
+Weather Widget:
+[ ] Farmer Dashboard shows weather for farmer's registered city (not city picker)
+[ ] No location dropdown visible on Farmer Dashboard (location is pinned)
+
+Lambda & EventBridge:
+[ ] Lambda test in console publishes SNS notification → email received
+[ ] EventBridge rule shows "Enabled" status
+[ ] CloudWatch logs show Lambda invocations every 15 min
+
+SNS:
+[ ] aws sns list-subscriptions returns your email subscription (Status: Confirmed)
+[ ] Manual publish to topic → email received within 60 seconds
+```
+
+---
+
+### 17.11 Secrets Manager — No New Secrets Required
+
+Phase 2 does not add new secrets. The SNS topic ARN is passed as an **environment variable** in PM2 and Lambda — not stored in Secrets Manager (it is not sensitive).
+
+Existing secrets remain unchanged:
+- `agriconnect/dev/database` — DB credentials
+- `agriconnect/dev/jwt` — JWT signing key
+- `agriconnect/dev/email` — SMTP (if configured)
+- `agriconnect/dev/s3` — bucket names
+- `agriconnect/dev/aws` — S3 credentials / IAM role flag

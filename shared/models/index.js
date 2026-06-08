@@ -10,6 +10,7 @@ function initModels(sequelize) {
   const Order = require('./Order')(sequelize, DataTypes);
   const Transaction = require('./Transaction')(sequelize, DataTypes);
   const Notification = require('./Notification')(sequelize, DataTypes);
+  const Payment = require('./Payment')(sequelize, DataTypes);
 
   // Define Associations
   User.hasOne(Farmer, { foreignKey: 'user_id', as: 'farmer_profile' });
@@ -38,6 +39,9 @@ function initModels(sequelize) {
 
   User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
   Notification.belongsTo(User, { foreignKey: 'user_id' });
+
+  Order.hasOne(Payment, { foreignKey: 'order_id', as: 'payment' });
+  Payment.belongsTo(Order, { foreignKey: 'order_id' });
 
   // Expose models on sequelize.models
   return sequelize.models;

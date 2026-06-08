@@ -6,6 +6,7 @@ const { authenticateToken, requireRole } = require('agriconnect-shared/middlewar
 // Buyer
 router.post('/create', authenticateToken, requireRole(['BUYER']), orderController.createOrder);
 router.get('/my-orders', authenticateToken, requireRole(['BUYER']), orderController.getBuyerOrders);
+router.post('/:id/confirm', authenticateToken, requireRole(['BUYER']), orderController.confirmDelivery);
 
 // Farmer
 router.get('/sales', authenticateToken, requireRole(['FARMER']), orderController.getFarmerSales);

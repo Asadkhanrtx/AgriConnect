@@ -5,7 +5,9 @@ module.exports = (sequelize, DataTypes) => {
     listing_id: { type: DataTypes.INTEGER, allowNull: false },
     quantity: { type: DataTypes.FLOAT, allowNull: false },
     total_amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
-    delivery_status: { type: DataTypes.STRING, defaultValue: 'PENDING' } // PENDING, IN_TRANSIT, DELIVERED
+    delivery_status: { type: DataTypes.STRING, defaultValue: 'PENDING' }, // PENDING, IN_TRANSIT, DELIVERED
+    buyer_confirmed: { type: DataTypes.BOOLEAN, defaultValue: false },
+    payment_released: { type: DataTypes.BOOLEAN, defaultValue: false }
   }, {
     tableName: 'orders',
     timestamps: true,

@@ -4,7 +4,7 @@ import {
   TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent,
   DialogActions, Tabs, Tab, Table, TableHead, TableRow, TableCell, TableBody,
   CircularProgress, Alert, MenuItem, Select, FormControl, InputLabel,
-  IconButton, Tooltip, Avatar, Badge, LinearProgress
+  IconButton, Tooltip, Avatar, Badge, LinearProgress, Snackbar
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -16,6 +16,8 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import AgricultureIcon from '@mui/icons-material/Agriculture';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PaymentIcon from '@mui/icons-material/Payment';
 import axios from 'axios';
 
 const STATUS_COLORS = { PENDING: 'warning', IN_TRANSIT: 'info', DELIVERED: 'success' };
@@ -78,6 +80,8 @@ const BuyerDashboard = ({ user }) => {
   const [bidLoading, setBidLoading] = useState(false);
   const [bidError, setBidError] = useState('');
 
+  const [confirmingId, setConfirmingId] = useState(null);
+
   const token = localStorage.getItem('token');
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -128,6 +132,19 @@ const BuyerDashboard = ({ user }) => {
       setBuyDialog(false); fetchListings(); fetchOrders(); setTab(1);
     } catch (err) { setBuyError(err.response?.data?.error || 'Order failed'); }
     finally { setBuyLoading(false); }
+  };
+
+  const handleConfirmDelivery = async (orderId) => {
+    if (!window.confirm('Confirm delivery and release payment to the farmer?')) return;
+    setConfirmingId(orderId);
+    try {
+      await axios.post(`/api/orders/${orderId}/confirm`, {}, { headers });
+      fetchOrders();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to confirm delivery');
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   const handleBid = async () => {
@@ -300,6 +317,7 @@ const BuyerDashboard = ({ user }) => {
                   <TableCell>Total</TableCell>
                   <TableCell>Date</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -331,6 +349,25 @@ const BuyerDashboard = ({ user }) => {
                       <Chip label={order.delivery_status}
                         color={STATUS_COLORS[order.delivery_status] || 'default'}
                         size="small" icon={<LocalShippingIcon />} />
+                    </TableCell>
+                    <TableCell>
+                      {order.delivery_status === 'DELIVERED' && !order.buyer_confirmed ? (
+                        <Tooltip title="Confirm receipt and release payment to farmer">
+                          <Button
+                            size="small" variant="contained" color="success"
+                            startIcon={confirmingId === order.id ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon />}
+                            disabled={confirmingId === order.id}
+                            onClick={() => handleConfirmDelivery(order.id)}
+                            sx={{ whiteSpace: 'nowrap', fontSize: 11 }}
+                          >
+                            Confirm Delivery
+                          </Button>
+                        </Tooltip>
+                      ) : order.buyer_confirmed ? (
+                        <Chip icon={<PaymentIcon />} label="Payment Released" color="success" size="small" variant="outlined" />
+                      ) : (
+                        <Typography variant="caption" color="textDisabled">—</Typography>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

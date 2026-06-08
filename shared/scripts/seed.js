@@ -14,13 +14,28 @@ const FARMER_LAST_NAMES = [
   'Reddy', 'Naidu', 'Nair', 'Mehta', 'Joshi',
   'Desai', 'Shah', 'Patil', 'Rao', 'Pillai'
 ];
+// High-rainfall locations concentrated for weather-alert demo
 const FARMER_LOCATIONS = [
-  'Amritsar, Punjab', 'Ludhiana, Punjab', 'Firozpur, Punjab', 'Patiala, Punjab',
-  'Karnal, Haryana', 'Hisar, Haryana', 'Rohtak, Haryana',
-  'Agra, Uttar Pradesh', 'Meerut, Uttar Pradesh', 'Varanasi, Uttar Pradesh', 'Kanpur, Uttar Pradesh',
-  'Pune, Maharashtra', 'Nashik, Maharashtra', 'Aurangabad, Maharashtra', 'Kolhapur, Maharashtra',
-  'Mysore, Karnataka', 'Belgaum, Karnataka', 'Tumkur, Karnataka',
-  'Coimbatore, Tamil Nadu', 'Salem, Tamil Nadu'
+  { city: 'Mawsynram',   state: 'Meghalaya',       lat: 25.2967, lon: 91.5833 },
+  { city: 'Cherrapunji', state: 'Meghalaya',       lat: 25.2844, lon: 91.7267 },
+  { city: 'Shillong',    state: 'Meghalaya',       lat: 25.5788, lon: 91.8933 },
+  { city: 'Agumbe',      state: 'Karnataka',       lat: 13.5025, lon: 75.0929 },
+  { city: 'Kochi',       state: 'Kerala',          lat:  9.9312, lon: 76.2673 },
+  { city: 'Mangalore',   state: 'Karnataka',       lat: 12.9141, lon: 74.8560 },
+  { city: 'Gangtok',     state: 'Sikkim',          lat: 27.3389, lon: 88.6065 },
+  { city: 'Nashik',      state: 'Maharashtra',     lat: 19.9975, lon: 73.7898 },
+  { city: 'Amritsar',    state: 'Punjab',          lat: 31.6340, lon: 74.8723 },
+  { city: 'Mawsynram',   state: 'Meghalaya',       lat: 25.2967, lon: 91.5833 },
+  { city: 'Cherrapunji', state: 'Meghalaya',       lat: 25.2844, lon: 91.7267 },
+  { city: 'Kochi',       state: 'Kerala',          lat:  9.9312, lon: 76.2673 },
+  { city: 'Agumbe',      state: 'Karnataka',       lat: 13.5025, lon: 75.0929 },
+  { city: 'Pune',        state: 'Maharashtra',     lat: 18.5204, lon: 73.8567 },
+  { city: 'Hyderabad',   state: 'Telangana',       lat: 17.3850, lon: 78.4867 },
+  { city: 'Shillong',    state: 'Meghalaya',       lat: 25.5788, lon: 91.8933 },
+  { city: 'Bhopal',      state: 'Madhya Pradesh',  lat: 23.2599, lon: 77.4126 },
+  { city: 'Coimbatore',  state: 'Tamil Nadu',      lat: 11.0168, lon: 76.9558 },
+  { city: 'Ludhiana',    state: 'Punjab',          lat: 30.9010, lon: 75.8573 },
+  { city: 'Patna',       state: 'Bihar',           lat: 25.5941, lon: 85.1376 },
 ];
 const FARM_PREFIXES = [
   'Green Valley', 'Golden', 'Sunrise', 'Heritage', 'Pure',
@@ -138,7 +153,7 @@ function getDescription(productName, location, category) {
 async function seed() {
   try {
     const sequelize = await getDatabaseConnection();
-    const { User, Farmer, Buyer, ProduceListing, Order, Transaction, Bid } = sequelize.models;
+    const { User, Farmer, Buyer, ProduceListing, Order, Transaction, Bid, Payment, Notification } = sequelize.models;
 
     const forceReseed = process.argv.includes('--force');
     const userCount = await User.count();
@@ -152,7 +167,7 @@ async function seed() {
     if (forceReseed && userCount > 0) {
       console.log('Force re-seeding: truncating all data tables...');
       await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
-      for (const name of ['Notification', 'Transaction', 'Bid', 'Order', 'ProduceListing', 'Farmer', 'Buyer', 'User']) {
+      for (const name of ['Notification', 'Payment', 'Transaction', 'Bid', 'Order', 'ProduceListing', 'Farmer', 'Buyer', 'User']) {
         if (sequelize.models[name]) {
           await sequelize.models[name].destroy({ where: {}, truncate: true, force: true }).catch(() => {});
         }
@@ -176,7 +191,7 @@ async function seed() {
     for (let i = 0; i < 20; i++) {
       const firstName = FARMER_FIRST_NAMES[i];
       const lastName = FARMER_LAST_NAMES[i];
-      const location = FARMER_LOCATIONS[i];
+      const locData = FARMER_LOCATIONS[i];
       const farmName = pickRandom(FARM_PREFIXES) + ' ' + pickRandom(FARM_SUFFIXES);
 
       const user = await User.create({
@@ -191,11 +206,15 @@ async function seed() {
       const farmer = await Farmer.create({
         user_id: user.id,
         farm_name: farmName,
-        location,
+        location: locData.city + ', ' + locData.state,
+        city: locData.city,
+        state: locData.state,
+        latitude: locData.lat,
+        longitude: locData.lon,
         bank_secret_reference: 'bank_ref_farmer_' + (i + 1)
       });
 
-      farmers.push({ farmer, user, location });
+      farmers.push({ farmer, user, location: locData.city + ', ' + locData.state });
     }
     console.log('  ✓ 20 Farmers created');
 
@@ -282,6 +301,13 @@ async function seed() {
         order_id: order.id,
         amount: totalAmount,
         status: 'COMPLETED'
+      });
+
+      await Payment.create({
+        order_id: order.id,
+        amount: totalAmount,
+        status: status === 'DELIVERED' ? 'RELEASED' : 'HELD',
+        released_at: status === 'DELIVERED' ? orderDate : null
       });
 
       await currentListing.update({

@@ -241,7 +241,7 @@ const FarmerDashboard = ({ user }) => {
           </Typography>
         </Box>
         <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
-          <WeatherWidget />
+          <WeatherWidget farmerLocation={user?.profile} />
           <Button variant="contained" color="primary" startIcon={<AddIcon />}
             onClick={openCreateDialog} size="large"
             sx={{ background: 'linear-gradient(135deg, #2E7D32, #388E3C)', height: 'fit-content', alignSelf: 'flex-end' }}>
