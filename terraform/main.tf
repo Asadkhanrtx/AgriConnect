@@ -100,8 +100,8 @@ resource "aws_secretsmanager_secret" "jwt" {
 resource "aws_secretsmanager_secret_version" "jwt" {
   secret_id = aws_secretsmanager_secret.jwt.id
   secret_string = jsonencode({
-    secret  = var.jwt_secret
-    expiry  = var.jwt_expiry
+    jwt_secret = var.jwt_secret
+    jwt_expiry = var.jwt_expiry
   })
 }
 
