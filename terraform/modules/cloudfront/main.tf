@@ -15,19 +15,26 @@ resource "aws_wafv2_web_acl" "main" {
   description = "AgriConnect WAF — SQLi/XSS/rate-limit protection"
   scope       = "CLOUDFRONT"
 
-  default_action { allow {} }
+  default_action {
+    allow {}
+  }
 
   # AWS Managed: Common Rule Set (SQLi, XSS, LFI, path traversal)
   rule {
     name     = "AWSManagedRulesCommonRuleSet"
     priority = 1
-    override_action { none {} }
+
+    override_action {
+      none {}
+    }
+
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
       }
     }
+
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "CommonRuleSetMetric"
@@ -35,17 +42,22 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # AWS Managed: Known Bad Inputs (exploit signatures, Log4SHELL, etc.)
+  # AWS Managed: Known Bad Inputs (exploit signatures, Log4Shell, etc.)
   rule {
     name     = "AWSManagedRulesKnownBadInputsRuleSet"
     priority = 2
-    override_action { none {} }
+
+    override_action {
+      none {}
+    }
+
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesKnownBadInputsRuleSet"
         vendor_name = "AWS"
       }
     }
+
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "KnownBadInputsMetric"
@@ -57,16 +69,24 @@ resource "aws_wafv2_web_acl" "main" {
   rule {
     name     = "RateLimitLogin"
     priority = 3
-    action { block {} }
+
+    action {
+      block {}
+    }
+
     statement {
       rate_based_statement {
-        limit              = 100   # per 5 minutes per IP
+        limit              = 100
         aggregate_key_type = "IP"
+
         scope_down_statement {
           byte_match_statement {
-            field_to_match { uri_path {} }
+            field_to_match {
+              uri_path {}
+            }
             positional_constraint = "STARTS_WITH"
             search_string         = "/api/auth/login"
+
             text_transformation {
               priority = 0
               type     = "LOWERCASE"
@@ -75,6 +95,7 @@ resource "aws_wafv2_web_acl" "main" {
         }
       }
     }
+
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "RateLimitLoginMetric"
@@ -86,13 +107,18 @@ resource "aws_wafv2_web_acl" "main" {
   rule {
     name     = "GlobalRateLimit"
     priority = 4
-    action { block {} }
+
+    action {
+      block {}
+    }
+
     statement {
       rate_based_statement {
-        limit              = 2000  # per 5 minutes per IP
+        limit              = 2000
         aggregate_key_type = "IP"
       }
     }
+
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "GlobalRateLimitMetric"
@@ -136,7 +162,7 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  # ── /api/* — API calls: no caching, forward everything ───────────────────────
+  # ── /api/* — no caching, forward everything ───────────────────────────────────
   ordered_cache_behavior {
     path_pattern           = "/api/*"
     allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -148,7 +174,10 @@ resource "aws_cloudfront_distribution" "main" {
     forwarded_values {
       query_string = true
       headers      = ["*"]
-      cookies { forward = "all" }
+
+      cookies {
+        forward = "all"
+      }
     }
 
     min_ttl     = 0
@@ -168,15 +197,18 @@ resource "aws_cloudfront_distribution" "main" {
     forwarded_values {
       query_string = false
       headers      = []
-      cookies { forward = "none" }
+
+      cookies {
+        forward = "none"
+      }
     }
 
     min_ttl     = 0
-    default_ttl = 86400     # 1 day default
-    max_ttl     = 31536000  # 1 year max (Vite filenames are content-hashed)
+    default_ttl = 86400
+    max_ttl     = 31536000
   }
 
-  # ── Default: SPA (index.html and routes) — no caching ────────────────────────
+  # ── Default: SPA routes — no caching ─────────────────────────────────────────
   default_cache_behavior {
     allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods         = ["GET", "HEAD"]
@@ -187,7 +219,10 @@ resource "aws_cloudfront_distribution" "main" {
     forwarded_values {
       query_string = true
       headers      = ["Host", "Origin", "Authorization"]
-      cookies { forward = "all" }
+
+      cookies {
+        forward = "all"
+      }
     }
 
     min_ttl     = 0
@@ -195,7 +230,7 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl     = 0
   }
 
-  # ── Custom error: SPA 404 → index.html (client-side routing) ─────────────────
+  # ── SPA routing: 404/403 → index.html ────────────────────────────────────────
   custom_error_response {
     error_code            = 404
     response_code         = 200
@@ -211,10 +246,12 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   restrictions {
-    geo_restriction { restriction_type = "none" }
+    geo_restriction {
+      restriction_type = "none"
+    }
   }
 
-  # Free CloudFront certificate — no custom domain or ACM needed
+  # Free default CloudFront certificate — no custom domain or ACM needed
   viewer_certificate {
     cloudfront_default_certificate = true
   }
