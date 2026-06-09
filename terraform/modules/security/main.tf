@@ -53,73 +53,29 @@ resource "aws_security_group" "common" {
   tags = { Name = "AgriConnect-Common-SG" }
 }
 
-# ── EC2 IAM Role ──────────────────────────────────────────────────────────────
+# ── EC2 IAM Role (imported — read-only, do not modify) ────────────────────────
 resource "aws_iam_role" "ec2" {
   name = var.ec2_iam_role_name
 
+  # Placeholder — real trust policy already set in AWS and never changed by Terraform
   assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
+    Version   = "2012-10-17"
+    Statement = []
   })
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [assume_role_policy]
+    ignore_changes  = all
   }
 }
 
-resource "aws_iam_role_policy_attachment" "ec2_ssm" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-
-  lifecycle { prevent_destroy = true }
-}
-
-resource "aws_iam_role_policy" "ec2_inline" {
-  name = "AgriConnect-EC2-Policy"
-  role = aws_iam_role.ec2.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-        Resource = "arn:aws:secretsmanager:*:*:secret:agriconnect/*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["sns:Publish"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:ListBucket"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
-        Resource = "*"
-      }
-    ]
-  })
-
-  lifecycle { prevent_destroy = true }
-}
-
+# ── EC2 IAM Instance Profile (imported — read-only) ───────────────────────────
 resource "aws_iam_instance_profile" "ec2" {
   name = var.ec2_iam_role_name
   role = aws_iam_role.ec2.name
 
-  lifecycle { prevent_destroy = true }
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = all
+  }
 }

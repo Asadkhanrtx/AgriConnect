@@ -120,7 +120,7 @@ resource "aws_sns_topic" "weather_alerts" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [policy, delivery_policy, kms_master_key_id]
+    ignore_changes  = all
   }
 }
 
@@ -134,7 +134,7 @@ resource "aws_sns_topic" "events" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [policy, delivery_policy, kms_master_key_id]
+    ignore_changes  = all
   }
 }
 
@@ -145,12 +145,11 @@ import {
 }
 
 resource "aws_sqs_queue" "notifications_dlq" {
-  name                       = var.sqs_dlq_name
-  message_retention_seconds  = 1209600 # 14 days
+  name = var.sqs_dlq_name
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [policy, tags]
+    ignore_changes  = all
   }
 }
 
@@ -160,48 +159,12 @@ import {
 }
 
 resource "aws_sqs_queue" "notifications" {
-  name                       = var.sqs_notifications_queue_name
-  visibility_timeout_seconds = 30
-  message_retention_seconds  = 86400 # 1 day
-  receive_wait_time_seconds  = 20
-
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.notifications_dlq.arn
-    maxReceiveCount     = 3
-  })
+  name = var.sqs_notifications_queue_name
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [policy, tags]
+    ignore_changes  = all
   }
-}
-
-# SNS → SQS subscription
-resource "aws_sns_topic_subscription" "events_to_sqs" {
-  topic_arn = aws_sns_topic.events.arn
-  protocol  = "sqs"
-  endpoint  = aws_sqs_queue.notifications.arn
-
-  lifecycle { prevent_destroy = true }
-}
-
-# SQS queue policy — allow SNS to send messages
-resource "aws_sqs_queue_policy" "notifications" {
-  queue_url = aws_sqs_queue.notifications.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid       = "AllowSNSPublish"
-      Effect    = "Allow"
-      Principal = { Service = "sns.amazonaws.com" }
-      Action    = "sqs:SendMessage"
-      Resource  = aws_sqs_queue.notifications.arn
-      Condition = {
-        ArnEquals = { "aws:SourceArn" = aws_sns_topic.events.arn }
-      }
-    }]
-  })
 }
 
 # ── Lambda Function ───────────────────────────────────────────────────────────
@@ -217,21 +180,12 @@ resource "aws_lambda_function" "weather_alert" {
   runtime       = "nodejs20.x"
   timeout       = 60
 
-  # filename is required by Terraform schema but ignored on import —
-  # the real code stays as-is in AWS. Set to a placeholder.
+  # filename required by schema — ignored after import; real code stays in AWS
   filename = "${path.module}/lambda_placeholder.zip"
-
-  environment {
-    variables = {
-      SNS_TOPIC_ARN    = aws_sns_topic.weather_alerts.arn
-      EVENTS_TOPIC_ARN = aws_sns_topic.events.arn
-      OPENWEATHER_API_KEY = var.openweather_api_key
-    }
-  }
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [filename, source_code_hash, last_modified, environment]
+    ignore_changes  = all
   }
 }
 
