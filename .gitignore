@@ -1,0 +1,39 @@
+# ── Node ──────────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Environment files — NEVER commit secrets ──────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Terraform secrets — CRITICAL ─────────────────────────────────────────────
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfstate.backup
+terraform/*.tfplan
+terraform/*.plan
+terraform/crash.log
+terraform/crash.*.log
+
+# ── Build artifacts ───────────────────────────────────────────────────────────
+frontend/build/
+frontend/dist/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
