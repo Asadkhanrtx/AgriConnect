@@ -13,5 +13,5 @@ app.use('/api/media', mediaRoutes);
 const PORT = process.env.PORT || 3004;
 
 app.listen(PORT, () => {
-  console.log(`Media Service running on port \${PORT}`);
+  console.log(`Media Service running on port ${PORT}`);
 });

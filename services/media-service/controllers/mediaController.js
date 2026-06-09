@@ -4,17 +4,18 @@ const crypto = require('crypto');
 
 let s3Client = null;
 let buckets = null;
+let s3Region = null;
 
 async function initS3() {
   if (s3Client && buckets) return;
 
-  const region = process.env.AWS_REGION || 'us-east-1';
+  s3Region = process.env.AWS_REGION || 'ap-south-1';
   const s3Config = await getSecret('agriconnect/dev/s3');
 
   // On EC2 with an IAM role the SDK auto-detects credentials from the instance
   // metadata service. Only inject explicit keys when running locally and the
   // secret contains a real access_key (set to "USE_IAM_ROLE" to skip).
-  const clientConfig = { region };
+  const clientConfig = { region: s3Region };
   try {
     const awsConfig = await getSecret('agriconnect/dev/aws');
     if (awsConfig.access_key && awsConfig.access_key !== 'USE_IAM_ROLE') {
@@ -24,7 +25,7 @@ async function initS3() {
       };
     }
   } catch (_) {
-    // No explicit credentials secret – rely on the IAM instance profile
+    // No explicit credentials secret — rely on the IAM instance profile
   }
 
   s3Client = new S3Client(clientConfig);
@@ -48,7 +49,7 @@ exports.uploadProduceImage = async (req, res) => {
       ContentType: req.file.mimetype
     }));
 
-    const imageUrl = `https://${buckets.produce_bucket}.s3.amazonaws.com/${fileName}`;
+    const imageUrl = `https://${buckets.produce_bucket}.s3.${s3Region}.amazonaws.com/${fileName}`;
     res.json({ imageUrl });
   } catch (error) {
     console.error('S3 Upload Error:', error);

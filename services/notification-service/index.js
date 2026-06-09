@@ -19,7 +19,7 @@ async function startServer() {
     await getDatabaseConnection();
     startWorker();
     app.listen(PORT, () => {
-      console.log(`Notification Service running on port \${PORT}`);
+      console.log(`Notification Service running on port ${PORT}`);
     });
   } catch (error) {
     console.error('Failed to start Notification Service:', error);

@@ -17,7 +17,7 @@ async function startServer() {
   try {
     await getDatabaseConnection();
     app.listen(PORT, () => {
-      console.log(`Order Service running on port \${PORT}`);
+      console.log(`Order Service running on port ${PORT}`);
     });
   } catch (error) {
     console.error('Failed to start Order Service:', error);

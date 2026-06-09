@@ -17,7 +17,7 @@ async function startServer() {
   try {
     await getDatabaseConnection();
     app.listen(PORT, () => {
-      console.log(`Marketplace Service running on port \${PORT}`);
+      console.log(`Marketplace Service running on port ${PORT}`);
     });
   } catch (error) {
     console.error('Failed to start Marketplace Service:', error);

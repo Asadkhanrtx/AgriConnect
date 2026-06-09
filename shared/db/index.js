@@ -12,7 +12,7 @@ async function getDatabaseConnection() {
   // Determine environment or use dev secret
   const secretName = process.env.DB_SECRET_NAME || 'agriconnect/dev/database';
   
-  console.log(`Fetching database credentials from: \${secretName}`);
+  console.log(`Fetching database credentials from: ${secretName}`);
   const dbConfig = await getSecret(secretName);
 
   if (!dbConfig) {
