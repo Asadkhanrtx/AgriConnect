@@ -224,11 +224,6 @@ resource "aws_lambda_function" "weather_alert" {
   }
 }
 
-resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/weather-alert-processor"
-  retention_in_days = 14
-}
-
 resource "aws_lambda_permission" "scheduler_invoke" {
   statement_id  = "AllowSchedulerInvoke"
   action        = "lambda:InvokeFunction"
