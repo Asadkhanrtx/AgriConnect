@@ -118,7 +118,7 @@ resource "aws_iam_role_policy" "ec2_inline" {
 }
 
 resource "aws_iam_instance_profile" "ec2" {
-  name = "${var.ec2_iam_role_name}-profile"
+  name = var.ec2_iam_role_name
   role = aws_iam_role.ec2.name
 
   lifecycle { prevent_destroy = true }

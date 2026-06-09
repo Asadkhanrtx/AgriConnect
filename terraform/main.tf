@@ -106,7 +106,7 @@ import {
 
 import {
   to = module.security.aws_iam_instance_profile.ec2
-  id = "AgriConnectEC2Role-profile"
+  id = "AgriConnectEC2Role"
 }
 
 # ── SNS Topics ────────────────────────────────────────────────────────────────
@@ -235,39 +235,35 @@ resource "aws_lambda_function" "weather_alert" {
   }
 }
 
-# ── EventBridge Rule ──────────────────────────────────────────────────────────
+# ── EventBridge Scheduler (existing — not a CloudWatch Event Rule) ────────────
+# This is an aws_scheduler_schedule, not aws_cloudwatch_event_rule.
+# Import ID format: <group_name>/<schedule_name>
 import {
-  to = aws_cloudwatch_event_rule.weather_check
-  id = "agriconnect-weather-check"
+  to = aws_scheduler_schedule.weather_check
+  id = "default/agriconnect-weather-check"
 }
 
-resource "aws_cloudwatch_event_rule" "weather_check" {
-  name                = var.eventbridge_rule_name
+resource "aws_scheduler_schedule" "weather_check" {
+  name       = var.eventbridge_rule_name
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
   schedule_expression = "rate(6 hours)"
-  state               = "ENABLED"
+
+  target {
+    arn      = aws_lambda_function.weather_alert.arn
+    role_arn = data.aws_iam_role.lambda.arn
+  }
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [schedule_expression, description, state]
+    # ignore_changes = all keeps the existing schedule config untouched —
+    # the scheduler was already wired correctly in AWS before Terraform managed it
+    ignore_changes = all
   }
-}
-
-resource "aws_cloudwatch_event_target" "lambda" {
-  rule      = aws_cloudwatch_event_rule.weather_check.name
-  target_id = "WeatherAlertLambda"
-  arn       = aws_lambda_function.weather_alert.arn
-
-  lifecycle { prevent_destroy = true }
-}
-
-resource "aws_lambda_permission" "eventbridge" {
-  statement_id  = "AllowEventBridgeInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.weather_alert.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.weather_check.arn
-
-  lifecycle { prevent_destroy = true }
 }
 
 # ── IAM Role data sources (existing — read-only) ──────────────────────────────
