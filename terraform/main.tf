@@ -33,8 +33,8 @@ module "rds" {
   name_prefix        = local.name_prefix
   private_subnet_ids = module.networking.private_subnet_ids
   common_sg_id       = module.security.common_sg_id
-  rds_instance_class = var.rds_instance_class
-  allocated_storage  = var.rds_allocated_storage
+  rds_instance_class = local.config.rds_instance_class
+  allocated_storage  = local.config.rds_allocated_storage
   db_name            = var.rds_db_name
   db_username        = var.rds_username
   db_password        = var.rds_password
@@ -55,9 +55,9 @@ module "ec2" {
   ec2_instance_profile_name = module.security.ec2_instance_profile_name
   public_subnet_ids         = module.networking.public_subnet_ids
   private_subnet_ids        = module.networking.private_subnet_ids
-  bastion_instance_type     = var.bastion_instance_type
-  backend_instance_type     = var.backend_instance_type
-  frontend_instance_type    = var.frontend_instance_type
+  bastion_instance_type     = local.config.bastion_instance_type
+  backend_instance_type     = local.config.backend_instance_type
+  frontend_instance_type    = local.config.frontend_instance_type
   github_repo_url           = var.github_repo_url
   aws_region                = var.aws_region
 }
@@ -75,7 +75,7 @@ module "alb" {
 # ── Secrets Manager ───────────────────────────────────────────────────────────
 
 resource "aws_secretsmanager_secret" "database" {
-  name                    = "agriconnect/${var.environment}/database"
+  name                    = "agriconnect/${local.workspace_env}/database"
   description             = "RDS MySQL credentials"
   recovery_window_in_days = 0
 }
@@ -92,7 +92,7 @@ resource "aws_secretsmanager_secret_version" "database" {
 }
 
 resource "aws_secretsmanager_secret" "jwt" {
-  name                    = "agriconnect/${var.environment}/jwt"
+  name                    = "agriconnect/${local.workspace_env}/jwt"
   description             = "JWT signing secret"
   recovery_window_in_days = 0
 }
@@ -106,7 +106,7 @@ resource "aws_secretsmanager_secret_version" "jwt" {
 }
 
 resource "aws_secretsmanager_secret" "aws_creds" {
-  name                    = "agriconnect/${var.environment}/aws"
+  name                    = "agriconnect/${local.workspace_env}/aws"
   description             = "AWS credentials (USE_IAM_ROLE = use instance profile)"
   recovery_window_in_days = 0
 }
@@ -121,7 +121,7 @@ resource "aws_secretsmanager_secret_version" "aws_creds" {
 }
 
 resource "aws_secretsmanager_secret" "email" {
-  name                    = "agriconnect/${var.environment}/email"
+  name                    = "agriconnect/${local.workspace_env}/email"
   description             = "SMTP email credentials for notifications"
   recovery_window_in_days = 0
 }
@@ -138,7 +138,7 @@ resource "aws_secretsmanager_secret_version" "email" {
 }
 
 resource "aws_secretsmanager_secret" "s3" {
-  name                    = "agriconnect/${var.environment}/s3"
+  name                    = "agriconnect/${local.workspace_env}/s3"
   description             = "S3 bucket names for media uploads"
   recovery_window_in_days = 0
 }
@@ -265,4 +265,7 @@ resource "aws_scheduler_schedule" "weather_check" {
     arn      = aws_lambda_function.weather_alert.arn
     role_arn = module.security.scheduler_role_arn
   }
+
+  # Lambda permission uses a constructed ARN (no implicit dep), so force ordering.
+  depends_on = [aws_lambda_permission.scheduler_invoke]
 }

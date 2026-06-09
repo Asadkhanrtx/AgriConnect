@@ -9,11 +9,6 @@ variable "project_name" {
   default = "agriconnect"
 }
 
-variable "environment" {
-  type    = string
-  default = "dev"
-}
-
 # ── Networking ────────────────────────────────────────────────────────────────
 variable "vpc_cidr" {
   type    = string
@@ -46,31 +41,7 @@ variable "key_pair_name" {
   type = string
 }
 
-variable "bastion_instance_type" {
-  type    = string
-  default = "t2.micro"
-}
-
-variable "backend_instance_type" {
-  type    = string
-  default = "t2.micro"
-}
-
-variable "frontend_instance_type" {
-  type    = string
-  default = "t2.micro"
-}
-
 # ── RDS ───────────────────────────────────────────────────────────────────────
-variable "rds_instance_class" {
-  type    = string
-  default = "db.t3.micro"
-}
-
-variable "rds_allocated_storage" {
-  type    = number
-  default = 20
-}
 
 variable "rds_db_name" {
   type    = string
