@@ -4,25 +4,25 @@ const { getSecret } = require('./secrets');
 async function sendEmail({ to, subject, html, text }) {
   try {
     const emailConfig = await getSecret('agriconnect/dev/email');
-    if (!emailConfig?.smtp_user || emailConfig.smtp_user === 'your-email@gmail.com') {
+    if (!emailConfig?.user || emailConfig.user === 'your-email@gmail.com') {
       console.log(`[EMAIL SIMULATED] To: ${to} | Subject: ${subject}`);
       return;
     }
 
-    const port = parseInt(emailConfig.smtp_port) || 587;
+    const port = parseInt(emailConfig.port) || 587;
     const transporter = nodemailer.createTransport({
-      host: emailConfig.smtp_host || 'smtp.gmail.com',
+      host: emailConfig.host || 'smtp.gmail.com',
       port,
       secure: port === 465,
       auth: {
-        user: emailConfig.smtp_user,
-        pass: emailConfig.smtp_password
+        user: emailConfig.user,
+        pass: emailConfig.pass
       },
       tls: { rejectUnauthorized: false }
     });
 
     await transporter.sendMail({
-      from: `"AgriConnect" <${emailConfig.smtp_user}>`,
+      from: emailConfig.from ? `"AgriConnect" <${emailConfig.from}>` : `"AgriConnect" <${emailConfig.user}>`,
       to,
       subject,
       html: html || `<p>${text}</p>`,
