@@ -1,25 +1,15 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
 # ║  AgriConnect — Root Terraform Configuration                                ║
-# ║  Terraform 1.5+  |  import blocks replace CLI `terraform import`           ║
+# ║  Creates ALL cloud infrastructure from scratch. No import blocks.          ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
-# ── Data sources ──────────────────────────────────────────────────────────────
+# (JWT secret provided via var.jwt_secret in terraform.tfvars)
 
-# Existing Secrets Manager secrets (read-only — never recreated)
-data "aws_secretsmanager_secret" "database" {
-  name = local.secret_ids.database
-}
-data "aws_secretsmanager_secret" "jwt" {
-  name = local.secret_ids.jwt
-}
-data "aws_secretsmanager_secret" "aws_creds" {
-  name = local.secret_ids.aws
-}
-data "aws_secretsmanager_secret" "email" {
-  name = local.secret_ids.email
-}
-data "aws_secretsmanager_secret" "s3" {
-  name = local.secret_ids.s3
+# ── Lambda package (index.js only — @aws-sdk/client-sns bundled in Node 18+) ──
+data "archive_file" "lambda" {
+  type        = "zip"
+  source_file = "${path.module}/../lambda/weather-alert-processor/index.js"
+  output_path = "${path.module}/lambda_package.zip"
 }
 
 # ── Modules ───────────────────────────────────────────────────────────────────
@@ -34,9 +24,8 @@ module "networking" {
 }
 
 module "security" {
-  source            = "./modules/security"
-  vpc_id            = module.networking.vpc_id
-  ec2_iam_role_name = var.ec2_iam_role_name
+  source = "./modules/security"
+  vpc_id = module.networking.vpc_id
 }
 
 module "rds" {
@@ -71,14 +60,6 @@ module "ec2" {
   frontend_instance_type    = var.frontend_instance_type
   github_repo_url           = var.github_repo_url
   aws_region                = var.aws_region
-  sns_topic_arn             = aws_sns_topic.weather_alerts.arn
-  events_topic_arn          = aws_sns_topic.events.arn
-  notifications_queue_url   = aws_sqs_queue.notifications.url
-  rds_endpoint              = module.rds.endpoint
-  # alb_dns_name passed as empty — frontend-install.sh reads ALB_DNS from env
-  # which is set post-deploy. The frontend serves the React build via Nginx.
-  alb_dns_name              = ""
-  rds_dependency            = module.rds.db_instance
 }
 
 module "alb" {
@@ -91,136 +72,188 @@ module "alb" {
   frontend_instance_id = module.ec2.frontend_instance_id
 }
 
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  EXISTING RESOURCES — imported via Terraform 1.5+ import blocks            ║
-# ║  These already exist in AWS. Import blocks wire them to Terraform state     ║
-# ║  without recreating them.  lifecycle.prevent_destroy keeps them safe from  ║
-# ║  `terraform destroy`.                                                       ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
+# ── Secrets Manager ───────────────────────────────────────────────────────────
 
-# ── EC2 IAM Role (existing — import into security module) ─────────────────────
-import {
-  to = module.security.aws_iam_role.ec2
-  id = "AgriConnectEC2Role"
+resource "aws_secretsmanager_secret" "database" {
+  name                    = "agriconnect/${var.environment}/database"
+  description             = "RDS MySQL credentials"
+  recovery_window_in_days = 0
 }
 
-import {
-  to = module.security.aws_iam_instance_profile.ec2
-  id = "AgriConnectEC2Role"
+resource "aws_secretsmanager_secret_version" "database" {
+  secret_id = aws_secretsmanager_secret.database.id
+  secret_string = jsonencode({
+    host     = module.rds.endpoint
+    port     = 3306
+    database = var.rds_db_name
+    username = var.rds_username
+    password = var.rds_password
+  })
+}
+
+resource "aws_secretsmanager_secret" "jwt" {
+  name                    = "agriconnect/${var.environment}/jwt"
+  description             = "JWT signing secret"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "jwt" {
+  secret_id = aws_secretsmanager_secret.jwt.id
+  secret_string = jsonencode({
+    secret  = var.jwt_secret
+    expiry  = var.jwt_expiry
+  })
+}
+
+resource "aws_secretsmanager_secret" "aws_creds" {
+  name                    = "agriconnect/${var.environment}/aws"
+  description             = "AWS credentials (USE_IAM_ROLE = use instance profile)"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "aws_creds" {
+  secret_id = aws_secretsmanager_secret.aws_creds.id
+  secret_string = jsonencode({
+    access_key = "USE_IAM_ROLE"
+    secret_key = "USE_IAM_ROLE"
+    region     = var.aws_region
+  })
+}
+
+resource "aws_secretsmanager_secret" "email" {
+  name                    = "agriconnect/${var.environment}/email"
+  description             = "SMTP email credentials for notifications"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "email" {
+  secret_id = aws_secretsmanager_secret.email.id
+  secret_string = jsonencode({
+    host = var.smtp_host
+    port = var.smtp_port
+    user = var.smtp_user
+    pass = var.smtp_pass
+    from = var.smtp_from != "" ? var.smtp_from : var.smtp_user
+  })
+}
+
+resource "aws_secretsmanager_secret" "s3" {
+  name                    = "agriconnect/${var.environment}/s3"
+  description             = "S3 bucket names for media uploads"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "s3" {
+  secret_id = aws_secretsmanager_secret.s3.id
+  secret_string = jsonencode({
+    produce_bucket  = var.s3_produce_images_bucket
+    delivery_bucket = var.s3_delivery_proofs_bucket
+    region          = var.aws_region
+  })
 }
 
 # ── SNS Topics ────────────────────────────────────────────────────────────────
-import {
-  to = aws_sns_topic.weather_alerts
-  id = "arn:aws:sns:ap-south-1:978594443309:AgriConnect-WeatherAlerts"
-}
 
 resource "aws_sns_topic" "weather_alerts" {
-  name = var.sns_weather_topic_name
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
-}
-
-import {
-  to = aws_sns_topic.events
-  id = "arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"
+  name = "AgriConnect-WeatherAlerts"
 }
 
 resource "aws_sns_topic" "events" {
-  name = var.sns_events_topic_name
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
+  name = "AgriConnect-Events"
 }
 
 # ── SQS Queues ────────────────────────────────────────────────────────────────
-import {
-  to = aws_sqs_queue.notifications_dlq
-  id = "https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-DLQ"
-}
 
 resource "aws_sqs_queue" "notifications_dlq" {
-  name = var.sqs_dlq_name
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
-}
-
-import {
-  to = aws_sqs_queue.notifications
-  id = "https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-Queue"
+  name                      = "AgriConnect-Notifications-DLQ"
+  message_retention_seconds = 1209600 # 14 days
 }
 
 resource "aws_sqs_queue" "notifications" {
-  name = var.sqs_notifications_queue_name
+  name                       = "AgriConnect-Notifications-Queue"
+  visibility_timeout_seconds = 30
+  message_retention_seconds  = 86400 # 1 day
+  receive_wait_time_seconds  = 20
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.notifications_dlq.arn
+    maxReceiveCount     = 3
+  })
+}
+
+resource "aws_sqs_queue_policy" "notifications" {
+  queue_url = aws_sqs_queue.notifications.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowSNSPublish"
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.notifications.arn
+      Condition = {
+        ArnEquals = { "aws:SourceArn" = aws_sns_topic.events.arn }
+      }
+    }]
+  })
+}
+
+resource "aws_sns_topic_subscription" "events_to_sqs" {
+  topic_arn = aws_sns_topic.events.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.notifications.arn
 }
 
 # ── Lambda Function ───────────────────────────────────────────────────────────
-import {
-  to = aws_lambda_function.weather_alert
-  id = "weather-alert-processor"
-}
 
 resource "aws_lambda_function" "weather_alert" {
-  function_name = var.lambda_function_name
-  role          = data.aws_iam_role.lambda.arn
-  handler       = "index.handler"
-  runtime       = "nodejs20.x"
-  timeout       = 60
+  function_name    = "weather-alert-processor"
+  role             = module.security.lambda_role_arn
+  handler          = "index.handler"
+  runtime          = "nodejs18.x"
+  timeout          = 60
+  filename         = data.archive_file.lambda.output_path
+  source_code_hash = data.archive_file.lambda.output_base64sha256
 
-  # filename required by schema — ignored after import; real code stays in AWS
-  filename = "${path.module}/lambda_placeholder.zip"
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
+  environment {
+    variables = {
+      SNS_TOPIC_ARN    = aws_sns_topic.weather_alerts.arn
+      EVENTS_TOPIC_ARN = aws_sns_topic.events.arn
+    }
   }
 }
 
-# ── EventBridge Scheduler (existing — not a CloudWatch Event Rule) ────────────
-# This is an aws_scheduler_schedule, not aws_cloudwatch_event_rule.
-# Import ID format: <group_name>/<schedule_name>
-import {
-  to = aws_scheduler_schedule.weather_check
-  id = "default/agriconnect-weather-check"
+resource "aws_cloudwatch_log_group" "lambda" {
+  name              = "/aws/lambda/weather-alert-processor"
+  retention_in_days = 14
 }
 
+resource "aws_lambda_permission" "scheduler_invoke" {
+  statement_id  = "AllowSchedulerInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.weather_alert.function_name
+  principal     = "scheduler.amazonaws.com"
+  # Constructed directly to avoid circular dependency with aws_scheduler_schedule
+  source_arn    = "arn:aws:scheduler:${var.aws_region}:${local.account_id}:schedule/default/agriconnect-weather-check"
+}
+
+# ── EventBridge Scheduler ─────────────────────────────────────────────────────
+
 resource "aws_scheduler_schedule" "weather_check" {
-  name       = var.eventbridge_rule_name
+  name       = "agriconnect-weather-check"
   group_name = "default"
+  state      = "ENABLED"
 
   flexible_time_window {
     mode = "OFF"
   }
 
-  schedule_expression = "rate(6 hours)"
+  schedule_expression          = var.weather_schedule_expression
+  schedule_expression_timezone = "Asia/Kolkata"
 
   target {
     arn      = aws_lambda_function.weather_alert.arn
-    role_arn = data.aws_iam_role.lambda.arn
+    role_arn = module.security.scheduler_role_arn
   }
-
-  lifecycle {
-    prevent_destroy = true
-    # ignore_changes = all keeps the existing schedule config untouched —
-    # the scheduler was already wired correctly in AWS before Terraform managed it
-    ignore_changes = all
-  }
-}
-
-# ── IAM Role data sources (existing — read-only) ──────────────────────────────
-data "aws_iam_role" "lambda" {
-  name = var.lambda_iam_role_name
 }

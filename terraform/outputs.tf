@@ -1,7 +1,7 @@
-# ── URLs & Endpoints ──────────────────────────────────────────────────────────
+# ── URLs ──────────────────────────────────────────────────────────────────────
 output "frontend_url" {
-  description = "Frontend URL via ALB"
-  value       = module.alb.frontend_url
+  description = "Frontend URL (via ALB)"
+  value       = "http://${module.alb.alb_dns_name}"
 }
 
 output "alb_dns_name" {
@@ -9,63 +9,73 @@ output "alb_dns_name" {
   value       = module.alb.alb_dns_name
 }
 
-output "backend_private_ip" {
-  description = "Backend EC2 private IP (access via bastion)"
-  value       = module.ec2.backend_private_ip
-}
-
 output "bastion_public_ip" {
-  description = "Bastion host public IP for SSH tunneling"
+  description = "Bastion host public IP"
   value       = module.ec2.bastion_public_ip
 }
 
+output "frontend_public_ip" {
+  description = "Frontend EC2 public IP"
+  value       = module.ec2.frontend_public_ip
+}
+
+output "backend_private_ip" {
+  description = "Backend EC2 private IP (reach via bastion)"
+  value       = module.ec2.backend_private_ip
+}
+
 output "rds_endpoint" {
-  description = "RDS MySQL endpoint"
+  description = "RDS MySQL endpoint hostname"
   value       = module.rds.endpoint
   sensitive   = true
 }
 
 # ── SNS ───────────────────────────────────────────────────────────────────────
 output "sns_weather_alerts_arn" {
-  description = "SNS topic ARN for weather alerts (email broadcast)"
-  value       = aws_sns_topic.weather_alerts.arn
+  value = aws_sns_topic.weather_alerts.arn
 }
 
 output "sns_events_arn" {
-  description = "SNS topic ARN for structured events (→ SQS → notification-service)"
-  value       = aws_sns_topic.events.arn
+  value = aws_sns_topic.events.arn
 }
 
 # ── SQS ───────────────────────────────────────────────────────────────────────
 output "sqs_notifications_url" {
-  description = "SQS queue URL for notification events"
-  value       = aws_sqs_queue.notifications.url
+  value = aws_sqs_queue.notifications.url
 }
 
 output "sqs_dlq_url" {
-  description = "SQS dead-letter queue URL"
-  value       = aws_sqs_queue.notifications_dlq.url
+  value = aws_sqs_queue.notifications_dlq.url
 }
 
 # ── Lambda ────────────────────────────────────────────────────────────────────
 output "lambda_arn" {
-  description = "Lambda function ARN (weather-alert-processor)"
-  value       = aws_lambda_function.weather_alert.arn
+  value = aws_lambda_function.weather_alert.arn
 }
 
 # ── S3 ────────────────────────────────────────────────────────────────────────
 output "s3_produce_images_url" {
-  description = "S3 public URL for produce images"
-  value       = module.s3.produce_images_bucket_url
+  value = "https://${var.s3_produce_images_bucket}.s3.${var.aws_region}.amazonaws.com"
 }
 
-output "s3_delivery_proofs_bucket" {
-  description = "S3 private bucket name for delivery proofs"
-  value       = module.s3.delivery_proofs_bucket_name
+# ── Secrets Manager ───────────────────────────────────────────────────────────
+output "secret_database_arn" {
+  value = aws_secretsmanager_secret.database.arn
 }
 
-# ── SSH Helper ────────────────────────────────────────────────────────────────
-output "ssh_backend_via_bastion" {
-  description = "SSH command to reach backend EC2 via bastion"
-  value       = "ssh -J ubuntu@${module.ec2.bastion_public_ip} ubuntu@${module.ec2.backend_private_ip}"
+output "jwt_secret_note" {
+  value = "JWT secret stored in Secrets Manager: ${aws_secretsmanager_secret.jwt.name}"
+}
+
+# ── SSH helpers ───────────────────────────────────────────────────────────────
+output "ssh_bastion" {
+  value = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${module.ec2.bastion_public_ip}"
+}
+
+output "ssh_backend" {
+  value = "ssh -i ~/.ssh/${var.key_pair_name}.pem -J ubuntu@${module.ec2.bastion_public_ip} ubuntu@${module.ec2.backend_private_ip}"
+}
+
+output "ssh_frontend" {
+  value = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${module.ec2.frontend_public_ip}"
 }

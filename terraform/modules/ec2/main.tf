@@ -1,4 +1,4 @@
-# ── Bastion Host ──────────────────────────────────────────────────────────────
+# ── Bastion ───────────────────────────────────────────────────────────────────
 resource "aws_instance" "bastion" {
   ami                         = var.ami_id
   instance_type               = var.bastion_instance_type
@@ -10,31 +10,18 @@ resource "aws_instance" "bastion" {
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
-    set -e
-    exec > /var/log/bastion-init.log 2>&1
-
-    echo "=== Bastion init: $(date) ==="
+    exec > /var/log/userdata.log 2>&1
     apt-get update -y
-    apt-get install -y curl git unzip
-
-    # AWS CLI v2
-    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
-    unzip -q /tmp/awscliv2.zip -d /tmp
-    /tmp/aws/install
-    rm -rf /tmp/awscliv2.zip /tmp/aws
-
-    # Node.js 20
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y nodejs
-
-    echo "=== Bastion init complete: $(date) ==="
+    apt-get install -y git
+    sudo -u ubuntu git clone ${var.github_repo_url} /home/ubuntu/AgriConnect
+    chown -R ubuntu:ubuntu /home/ubuntu/AgriConnect
   EOF
   )
 
   tags = { Name = "${var.name_prefix}-bastion" }
 }
 
-# ── Backend EC2 ───────────────────────────────────────────────────────────────
+# ── Backend EC2 (private subnet) ──────────────────────────────────────────────
 resource "aws_instance" "backend" {
   ami                    = var.ami_id
   instance_type          = var.backend_instance_type
@@ -44,20 +31,13 @@ resource "aws_instance" "backend" {
   iam_instance_profile   = var.ec2_instance_profile_name
 
   user_data = base64encode(templatefile("${path.module}/templates/backend-userdata.sh.tpl", {
-    github_repo_url         = var.github_repo_url
-    aws_region              = var.aws_region
-    sns_topic_arn           = var.sns_topic_arn
-    events_topic_arn        = var.events_topic_arn
-    notifications_queue_url = var.notifications_queue_url
-    rds_endpoint            = var.rds_endpoint
+    github_repo_url = var.github_repo_url
   }))
-
-  depends_on = [var.rds_dependency]
 
   tags = { Name = "${var.name_prefix}-backend" }
 }
 
-# ── Frontend EC2 ──────────────────────────────────────────────────────────────
+# ── Frontend EC2 (public subnet) ──────────────────────────────────────────────
 resource "aws_instance" "frontend" {
   ami                         = var.ami_id
   instance_type               = var.frontend_instance_type
@@ -69,7 +49,6 @@ resource "aws_instance" "frontend" {
 
   user_data = base64encode(templatefile("${path.module}/templates/frontend-userdata.sh.tpl", {
     github_repo_url = var.github_repo_url
-    alb_dns_name    = var.alb_dns_name
   }))
 
   tags = { Name = "${var.name_prefix}-frontend" }

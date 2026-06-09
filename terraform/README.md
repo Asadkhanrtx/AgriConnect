@@ -34,36 +34,26 @@ cd terraform/
 cp terraform.tfvars.example terraform.tfvars
 $EDITOR terraform.tfvars          # set key_pair_name, rds_password, etc.
 
-# 2. Replace ACCOUNT_ID_PLACEHOLDER in import blocks with your AWS account ID
-bash scripts/set-account-id.sh
-
-# 3. Initialize
+# 2. Initialize
 terraform init
 
-# 4. Preview changes (imports show as "will be imported")
+# 3. Preview changes (imports show as "will be imported")
 terraform plan
 
-# 5. Apply (imports happen automatically on first apply)
+# 4. Apply
 terraform apply
 ```
 
-> **Two-phase frontend build**: The React app needs the ALB DNS as `REACT_APP_API_URL`.
-> Since the ALB is created in the same apply as the EC2 instances, the frontend build
-> runs *after* `terraform apply` completes:
-> ```bash
-> ALB=$(terraform output -raw alb_dns_name)
-> ssh ubuntu@$(terraform output -raw bastion_public_ip) \
->   "cd AgriConnect/frontend && REACT_APP_API_URL=http://$ALB npm run build && sudo systemctl restart nginx"
-> ```
-
 `terraform apply` will:
-1. Import existing Lambda, EventBridge, SNS, SQS into state
+1. Import existing Lambda, EventBridge Scheduler, SNS, SQS, IAM into state
 2. Create VPC, subnets, IGW, NAT gateway
-3. Create security group and IAM instance profile
+3. Create security group
 4. Create RDS MySQL (~5 min)
-5. Create EC2 instances (UserData runs in background — full boot ~8–12 min)
+5. Create EC2 instances — UserData installs git and clones the repo only
 6. Create ALB + target groups + listener rules
 7. Create S3 buckets
+
+**Application setup is fully manual** — see [AFTER-APPLY.md](AFTER-APPLY.md) for the step-by-step guide to install dependencies, run migrations, start PM2, and build the frontend.
 
 ---
 
