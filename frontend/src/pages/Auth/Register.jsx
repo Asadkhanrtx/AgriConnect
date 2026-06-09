@@ -2,16 +2,18 @@ import React, { useState } from 'react';
 import {
   Box, TextField, Button, Typography, Alert,
   Select, MenuItem, FormControl, InputLabel,
-  InputAdornment, CircularProgress, Stepper, Step, StepLabel
+  InputAdornment, CircularProgress
 } from '@mui/material';
+import { motion } from 'framer-motion';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import BusinessIcon from '@mui/icons-material/Business';
 import AgricultureIcon from '@mui/icons-material/Agriculture';
-import GrassIcon from '@mui/icons-material/Grass';
+import SpaIcon from '@mui/icons-material/Spa';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -42,33 +44,29 @@ const ROLE_INFO = {
   FARMER: {
     title: 'Farmer',
     subtitle: 'Sell your produce directly to buyers across India',
-    icon: <AgricultureIcon sx={{ fontSize: 40, color: '#A5D6A7' }} />,
-    bullets: ['Create produce listings', 'Receive bids from buyers', 'Track your orders & earnings'],
+    bullets: ['Create produce listings', 'Receive bids from buyers', 'Track orders & earnings'],
+    bg: 'url(https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=1200&q=80)',
   },
   BUYER: {
     title: 'Buyer / Wholesaler',
     subtitle: 'Source fresh produce directly from farms',
-    icon: <BusinessIcon sx={{ fontSize: 40, color: '#A5D6A7' }} />,
     bullets: ['Browse 100+ produce categories', 'Place competitive bids', 'Track deliveries in real time'],
+    bg: 'url(https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&q=80)',
   },
 };
 
 const Register = ({ setUser }) => {
   const [formData, setFormData] = useState({
     role: 'FARMER',
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    password: '',
+    first_name: '', last_name: '', email: '', phone: '', password: '',
     extra_data: { farm_name: '', location: '', city: '', state: '', lat: null, lon: null, company_name: '' }
   });
-  const [error, setError] = useState('');
+  const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const set = (key, value) => setFormData(prev => ({ ...prev, [key]: value }));
-  const setExtra = (key, value) => setFormData(prev => ({ ...prev, extra_data: { ...prev.extra_data, [key]: value } }));
+  const set      = (key, val) => setFormData(p => ({ ...p, [key]: val }));
+  const setExtra = (key, val) => setFormData(p => ({ ...p, extra_data: { ...p.extra_data, [key]: val } }));
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -76,8 +74,7 @@ const Register = ({ setUser }) => {
       setError('Please fill in all required fields.');
       return;
     }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       await axios.post('/api/auth/register', formData);
       const res = await axios.post('/api/auth/login', { email: formData.email, password: formData.password });
@@ -94,216 +91,219 @@ const Register = ({ setUser }) => {
   const info = ROLE_INFO[formData.role];
 
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 60px)', overflow: 'hidden' }}>
 
-      {/* ── Left hero panel ── */}
+      {/* ── Left hero panel ───────────────────────────────────────────────────── */}
+      <motion.div
+        key={formData.role}
+        initial={{ opacity: 0.7 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        style={{ flex: '0 0 38%', display: 'none' }}
+      />
       <Box sx={{
         display: { xs: 'none', md: 'flex' },
-        flex: '0 0 42%',
+        flex: '0 0 38%',
         position: 'relative',
         flexDirection: 'column',
         justifyContent: 'center',
         p: 6,
-        backgroundImage: 'url(https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=1200&q=80)',
+        backgroundImage: info.bg,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
+        transition: 'background-image 0.5s ease',
         '&::before': {
-          content: '""',
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(160deg, rgba(27,94,32,0.5) 0%, rgba(15,55,18,0.92) 100%)',
+          content: '""', position: 'absolute', inset: 0,
+          background: 'linear-gradient(160deg, rgba(18,53,36,0.45) 0%, rgba(10,31,21,0.94) 100%)',
         },
       }}>
         <Box sx={{ position: 'relative', zIndex: 1 }}>
           <Box display="flex" alignItems="center" gap={1.5} mb={5}>
-            <GrassIcon sx={{ color: '#A5D6A7', fontSize: 40 }} />
-            <Typography variant="h5" fontWeight={800} color="white" letterSpacing={0.5}>
+            <Box sx={{
+              width: 38, height: 38, borderRadius: '11px',
+              background: 'linear-gradient(135deg, #A3B18A, #D9A441)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <SpaIcon sx={{ color: '#123524', fontSize: 20 }} />
+            </Box>
+            <Typography sx={{ fontFamily: '"Satoshi", sans-serif', fontWeight: 800, fontSize: '1.15rem', color: 'white', letterSpacing: '-0.02em' }}>
               AgriConnect
             </Typography>
           </Box>
 
-          <Typography variant="h4" fontWeight={800} color="white" mb={2} lineHeight={1.2}>
-            Join India's Largest<br />AgriMarketplace
+          <Typography sx={{
+            fontFamily: '"Satoshi", sans-serif', fontWeight: 800,
+            fontSize: '1.9rem', color: 'white', lineHeight: 1.15, mb: 2, letterSpacing: '-0.03em',
+          }}>
+            Join India's Largest<br />
+            <Box component="span" sx={{ color: '#D9A441' }}>AgriMarketplace</Box>
           </Typography>
 
           {/* Role preview card */}
           <Box sx={{
-            p: 3, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.1)',
-            backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)',
-            transition: 'all 0.3s ease',
+            p: 2.5, borderRadius: '14px',
+            background: 'rgba(255,255,255,0.09)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.14)',
+            mb: 3,
           }}>
             <Box display="flex" alignItems="center" gap={2} mb={2}>
-              {info.icon}
+              {formData.role === 'FARMER'
+                ? <AgricultureIcon sx={{ fontSize: 36, color: '#A3B18A' }} />
+                : <BusinessIcon sx={{ fontSize: 36, color: '#D9A441' }} />
+              }
               <Box>
                 <Typography variant="h6" fontWeight={700} color="white">{info.title}</Typography>
-                <Typography variant="body2" color="rgba(255,255,255,0.75)" lineHeight={1.4}>{info.subtitle}</Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>{info.subtitle}</Typography>
               </Box>
             </Box>
             {info.bullets.map(b => (
               <Box key={b} display="flex" alignItems="center" gap={1} mb={0.75}>
-                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#A5D6A7', flexShrink: 0 }} />
-                <Typography variant="body2" color="rgba(255,255,255,0.85)">{b}</Typography>
+                <CheckCircleIcon sx={{ fontSize: 15, color: '#A3B18A', flexShrink: 0 }} />
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.80)' }}>{b}</Typography>
               </Box>
             ))}
           </Box>
 
-          <Typography variant="caption" color="rgba(255,255,255,0.5)" display="block" mt={4}>
-            Your profile will change based on the role selected →
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', display: 'block' }}>
+            Profile updates as you select your role →
           </Typography>
         </Box>
       </Box>
 
-      {/* ── Right form panel ── */}
+      {/* ── Right form panel ──────────────────────────────────────────────────── */}
       <Box sx={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        p: { xs: 3, md: 5 },
-        bgcolor: 'white',
-        overflow: 'auto',
+        flex: 1, display: 'flex', flexDirection: 'column',
+        justifyContent: 'center', alignItems: 'center',
+        p: { xs: 3, md: 5 }, background: '#F8F7F2', overflow: 'auto',
       }}>
-        <Box sx={{ width: '100%', maxWidth: 480 }}>
-          {/* Mobile-only logo */}
-          <Box display={{ xs: 'flex', md: 'none' }} alignItems="center" gap={1} mb={3}>
-            <GrassIcon color="primary" sx={{ fontSize: 28 }} />
-            <Typography variant="h6" fontWeight="bold" color="primary">AgriConnect</Typography>
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          style={{ width: '100%', maxWidth: 480 }}
+        >
+          {/* Mobile logo */}
+          <Box display={{ xs: 'flex', md: 'none' }} alignItems="center" gap={1.5} mb={3}>
+            <Box sx={{ width: 32, height: 32, borderRadius: '9px', background: 'linear-gradient(135deg, #123524, #3E5F44)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <SpaIcon sx={{ color: '#A3B18A', fontSize: 17 }} />
+            </Box>
+            <Typography sx={{ fontFamily: '"Satoshi", sans-serif', fontWeight: 800, color: '#123524' }}>AgriConnect</Typography>
           </Box>
 
-          <Typography variant="h4" fontWeight={800} color="text.primary" mb={0.5}>
+          <Typography sx={{ fontFamily: '"Satoshi", sans-serif', fontWeight: 800, fontSize: '1.8rem', color: '#123524', mb: 0.5, letterSpacing: '-0.02em' }}>
             Create account
           </Typography>
-          <Typography variant="body1" color="text.secondary" mb={3}>
-            Start trading fresh produce today
-          </Typography>
+          <Typography variant="body1" sx={{ color: '#5a6b5c', mb: 3 }}>Start trading fresh produce today</Typography>
 
-          {error && <Alert severity="error" sx={{ mb: 2.5, borderRadius: 2 }}>{error}</Alert>}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2.5, borderRadius: '10px' }}>{error}</Alert>
+          )}
 
           <form onSubmit={handleRegister}>
             {/* Role selector */}
-            <FormControl fullWidth sx={{ mb: 2.5 }}>
-              <InputLabel>I am a...</InputLabel>
-              <Select value={formData.role} label="I am a..."
-                onChange={e => set('role', e.target.value)}>
-                <MenuItem value="FARMER">
-                  <Box display="flex" alignItems="center" gap={1.5}>
-                    <AgricultureIcon color="primary" fontSize="small" />
-                    Farmer — I want to sell my produce
+            <Box display="flex" gap={1.5} mb={2.5}>
+              {['FARMER', 'BUYER'].map(role => (
+                <Box key={role}
+                  onClick={() => set('role', role)}
+                  sx={{
+                    flex: 1, p: 1.75, borderRadius: '12px', cursor: 'pointer',
+                    border: formData.role === role ? '2px solid #123524' : '2px solid rgba(18,53,36,0.12)',
+                    background: formData.role === role ? 'rgba(18,53,36,0.06)' : 'transparent',
+                    display: 'flex', alignItems: 'center', gap: 1.5,
+                    transition: 'all 0.2s',
+                  }}>
+                  {role === 'FARMER'
+                    ? <AgricultureIcon sx={{ color: formData.role === role ? '#123524' : '#A3B18A', fontSize: 22 }} />
+                    : <BusinessIcon sx={{ color: formData.role === role ? '#123524' : '#A3B18A', fontSize: 22 }} />
+                  }
+                  <Box>
+                    <Typography variant="body2" fontWeight={700} sx={{ color: '#1a2e1d', lineHeight: 1.2 }}>
+                      {role === 'FARMER' ? 'Farmer' : 'Buyer'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#9aab9c', lineHeight: 1.3 }}>
+                      {role === 'FARMER' ? 'Sell produce' : 'Source produce'}
+                    </Typography>
                   </Box>
-                </MenuItem>
-                <MenuItem value="BUYER">
-                  <Box display="flex" alignItems="center" gap={1.5}>
-                    <BusinessIcon color="primary" fontSize="small" />
-                    Buyer / Wholesaler — I want to source produce
-                  </Box>
-                </MenuItem>
-              </Select>
-            </FormControl>
+                </Box>
+              ))}
+            </Box>
 
             {/* Name row */}
             <Box display="flex" gap={2} mb={2}>
-              <TextField
-                fullWidth label="First Name" required
+              <TextField fullWidth label="First Name" required
                 value={formData.first_name} onChange={e => set('first_name', e.target.value)}
-                InputProps={{ startAdornment: <InputAdornment position="start"><PersonIcon color="action" fontSize="small" /></InputAdornment> }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><PersonIcon sx={{ color: '#A3B18A', fontSize: 18 }} /></InputAdornment> }}
               />
-              <TextField
-                fullWidth label="Last Name" required
+              <TextField fullWidth label="Last Name" required
                 value={formData.last_name} onChange={e => set('last_name', e.target.value)}
               />
             </Box>
 
-            {/* Role-specific field */}
             {formData.role === 'FARMER' ? (
               <>
-                <TextField
-                  fullWidth label="Farm Name" required sx={{ mb: 2 }}
+                <TextField fullWidth label="Farm Name" required sx={{ mb: 2 }}
                   value={formData.extra_data.farm_name}
                   onChange={e => setExtra('farm_name', e.target.value)}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><AgricultureIcon color="action" fontSize="small" /></InputAdornment> }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><AgricultureIcon sx={{ color: '#A3B18A', fontSize: 18 }} /></InputAdornment> }}
                 />
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Farm Location</InputLabel>
-                  <Select
-                    value={formData.extra_data.location}
-                    label="Farm Location"
+                  <Select value={formData.extra_data.location} label="Farm Location"
                     onChange={e => {
                       const opt = LOCATION_OPTIONS.find(o => o.label === e.target.value);
-                      if (opt) {
-                        setFormData(prev => ({
-                          ...prev,
-                          extra_data: { ...prev.extra_data, location: opt.label, city: opt.city, state: opt.state, lat: opt.lat, lon: opt.lon }
-                        }));
-                      }
+                      if (opt) setFormData(p => ({ ...p, extra_data: { ...p.extra_data, location: opt.label, city: opt.city, state: opt.state, lat: opt.lat, lon: opt.lon } }));
                     }}
-                    startAdornment={<InputAdornment position="start"><LocationOnIcon color="action" fontSize="small" /></InputAdornment>}
+                    startAdornment={<InputAdornment position="start"><LocationOnIcon sx={{ color: '#A3B18A', fontSize: 18 }} /></InputAdornment>}
                   >
-                    {LOCATION_OPTIONS.map(opt => (
-                      <MenuItem key={opt.label} value={opt.label}>{opt.label}</MenuItem>
-                    ))}
+                    {LOCATION_OPTIONS.map(opt => <MenuItem key={opt.label} value={opt.label}>{opt.label}</MenuItem>)}
                   </Select>
                 </FormControl>
               </>
             ) : (
-              <TextField
-                fullWidth label="Company Name" required sx={{ mb: 2 }}
+              <TextField fullWidth label="Company Name" required sx={{ mb: 2 }}
                 value={formData.extra_data.company_name}
                 onChange={e => setExtra('company_name', e.target.value)}
-                InputProps={{ startAdornment: <InputAdornment position="start"><BusinessIcon color="action" fontSize="small" /></InputAdornment> }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><BusinessIcon sx={{ color: '#A3B18A', fontSize: 18 }} /></InputAdornment> }}
               />
             )}
 
-            <TextField
-              fullWidth label="Email Address" type="email" required
+            <TextField fullWidth label="Email Address" type="email" required sx={{ mb: 2 }}
               value={formData.email} onChange={e => set('email', e.target.value)}
-              sx={{ mb: 2 }}
-              InputProps={{ startAdornment: <InputAdornment position="start"><EmailIcon color="action" fontSize="small" /></InputAdornment> }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><EmailIcon sx={{ color: '#A3B18A', fontSize: 18 }} /></InputAdornment> }}
             />
-
-            <TextField
-              fullWidth label="Phone Number"
+            <TextField fullWidth label="Phone Number" sx={{ mb: 2 }}
               value={formData.phone} onChange={e => set('phone', e.target.value)}
-              sx={{ mb: 2 }}
-              InputProps={{ startAdornment: <InputAdornment position="start"><PhoneIcon color="action" fontSize="small" /></InputAdornment> }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><PhoneIcon sx={{ color: '#A3B18A', fontSize: 18 }} /></InputAdornment> }}
             />
-
-            <TextField
-              fullWidth label="Password" type="password" required
+            <TextField fullWidth label="Password" type="password" required sx={{ mb: 3 }}
               value={formData.password} onChange={e => set('password', e.target.value)}
-              sx={{ mb: 3 }}
               helperText="Minimum 8 characters"
-              InputProps={{ startAdornment: <InputAdornment position="start"><LockIcon color="action" fontSize="small" /></InputAdornment> }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><LockIcon sx={{ color: '#A3B18A', fontSize: 18 }} /></InputAdornment> }}
             />
 
-            <Button
-              type="submit" fullWidth variant="contained" size="large"
+            <Button type="submit" fullWidth variant="contained" size="large"
               disabled={loading}
               sx={{
-                py: 1.6, fontSize: '1rem', fontWeight: 700,
-                background: 'linear-gradient(135deg, #1B5E20 0%, #2E7D32 60%, #388E3C 100%)',
-                boxShadow: '0 4px 20px rgba(46,125,50,0.4)',
-                '&:hover': { background: 'linear-gradient(135deg, #155218 0%, #256626 60%, #2d7434 100%)' },
-                mb: 2,
-              }}
-            >
-              {loading ? <CircularProgress size={22} color="inherit" /> : `Create ${ROLE_INFO[formData.role].title} Account`}
+                py: 1.6, fontSize: '1rem', fontWeight: 700, borderRadius: '12px',
+                background: 'linear-gradient(135deg, #123524 0%, #3E5F44 100%)',
+                boxShadow: '0 6px 24px rgba(18,53,36,0.32)',
+                '&:hover': { transform: 'translateY(-1px)', boxShadow: '0 8px 28px rgba(18,53,36,0.40)' },
+                transition: 'all 0.2s', mb: 2,
+              }}>
+              {loading ? <CircularProgress size={22} color="inherit" /> : `Create ${info.title} Account`}
             </Button>
 
             <Box textAlign="center">
               <Typography variant="body2" color="text.secondary">
                 Already have an account?{' '}
-                <Typography
-                  component="span" variant="body2" color="primary"
-                  fontWeight={700} sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-                  onClick={() => navigate('/login')}
-                >
+                <Box component="span" onClick={() => navigate('/login')} sx={{ color: '#D9A441', fontWeight: 700, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
                   Sign in
-                </Typography>
+                </Box>
               </Typography>
             </Box>
           </form>
-        </Box>
+        </motion.div>
       </Box>
     </Box>
   );

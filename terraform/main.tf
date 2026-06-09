@@ -233,6 +233,20 @@ resource "aws_lambda_permission" "scheduler_invoke" {
   source_arn    = "arn:aws:scheduler:${var.aws_region}:${local.account_id}:schedule/default/agriconnect-weather-check"
 }
 
+# ── CloudFront + WAF ──────────────────────────────────────────────────────────
+
+module "cloudfront" {
+  source = "./modules/cloudfront"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  alb_dns_name = module.alb.alb_dns_name
+  tags         = local.common_tags
+}
+
 # ── EventBridge Scheduler ─────────────────────────────────────────────────────
 
 resource "aws_scheduler_schedule" "weather_check" {

@@ -1,6 +1,16 @@
 # ── URLs ──────────────────────────────────────────────────────────────────────
+output "cloudfront_url" {
+  description = "Primary app URL via CloudFront (HTTPS + WAF) — use this"
+  value       = module.cloudfront.cloudfront_url
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID (for cache invalidation: aws cloudfront create-invalidation --distribution-id <id> --paths '/*')"
+  value       = module.cloudfront.distribution_id
+}
+
 output "frontend_url" {
-  description = "Frontend URL (via ALB)"
+  description = "Frontend URL (via ALB — use cloudfront_url instead)"
   value       = "http://${module.alb.alb_dns_name}"
 }
 
