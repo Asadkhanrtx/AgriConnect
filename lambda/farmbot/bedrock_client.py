@@ -42,7 +42,20 @@ def build_text_payload(message):
     }
 
 
+def _detect_format(image_b64):
+    if image_b64.startswith('/9j/'):
+        return 'jpeg'
+    if image_b64.startswith('iVBORw0K'):
+        return 'png'
+    if image_b64.startswith('UklGR'):
+        return 'webp'
+    if image_b64.startswith('R0lGO'):
+        return 'gif'
+    return 'jpeg'
+
+
 def build_multimodal_payload(message, image_b64):
+    fmt = _detect_format(image_b64)
     return {
         "messages": [
             {
@@ -50,7 +63,7 @@ def build_multimodal_payload(message, image_b64):
                 "content": [
                     {
                         "image": {
-                            "format": "jpeg",
+                            "format": fmt,
                             "source": {
                                 "bytes": image_b64
                             }
