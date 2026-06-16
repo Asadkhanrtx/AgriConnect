@@ -68,6 +68,13 @@ variable "s3_delivery_proofs_bucket" {
   type = string
 }
 
+# ── FarmBot ───────────────────────────────────────────────────────────────────
+variable "farmbot_logs_bucket" {
+  type        = string
+  description = "S3 bucket name for FarmBot chat logs and uploaded photos"
+  default     = "agriconnect-farmbot-logs"
+}
+
 # ── SMTP (stored in Secrets Manager / used by notification emails) ─────────────
 variable "smtp_host" {
   type    = string

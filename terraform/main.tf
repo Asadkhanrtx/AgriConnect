@@ -247,6 +247,132 @@ module "cloudfront" {
   tags         = local.common_tags
 }
 
+# ── FarmBot Chatbot (Lambda + API Gateway HTTP API) ──────────────────────────
+
+data "archive_file" "farmbot" {
+  type        = "zip"
+  source_dir  = "${path.module}/../lambda/farmbot"
+  output_path = "${path.module}/farmbot_package.zip"
+}
+
+resource "aws_s3_bucket" "farmbot_logs" {
+  bucket        = var.farmbot_logs_bucket
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_public_access_block" "farmbot_logs" {
+  bucket                  = aws_s3_bucket.farmbot_logs.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_sns_topic" "farmbot_critical" {
+  name = "farmbot-critical-alerts"
+}
+
+resource "aws_iam_role" "farmbot_lambda" {
+  name = "${local.name_prefix}-farmbot-lambda-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "farmbot_lambda" {
+  name = "${local.name_prefix}-farmbot-lambda-policy"
+  role = aws_iam_role.farmbot_lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
+        Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = "${aws_s3_bucket.farmbot_logs.arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = aws_sns_topic.farmbot_critical.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "farmbot" {
+  function_name    = "farmbot-chatbot"
+  role             = aws_iam_role.farmbot_lambda.arn
+  handler          = "lambda_function.lambda_handler"
+  runtime          = "python3.12"
+  timeout          = 30
+  filename         = data.archive_file.farmbot.output_path
+  source_code_hash = data.archive_file.farmbot.output_base64sha256
+
+  environment {
+    variables = {
+      BEDROCK_REGION    = "us-east-1"
+      MODEL_ID          = "amazon.nova-lite-v1:0"
+      S3_BUCKET_NAME    = aws_s3_bucket.farmbot_logs.bucket
+      SNS_TOPIC_ARN     = aws_sns_topic.farmbot_critical.arn
+      MAX_IMAGE_SIZE_MB = "5"
+    }
+  }
+}
+
+resource "aws_apigatewayv2_api" "farmbot" {
+  name          = "farmbot-api"
+  protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins = ["*"]
+    allow_methods = ["POST", "OPTIONS"]
+    allow_headers = ["Content-Type", "Authorization"]
+    max_age       = 300
+  }
+}
+
+resource "aws_apigatewayv2_integration" "farmbot" {
+  api_id                 = aws_apigatewayv2_api.farmbot.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.farmbot.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "farmbot" {
+  api_id    = aws_apigatewayv2_api.farmbot.id
+  route_key = "POST /chat"
+  target    = "integrations/${aws_apigatewayv2_integration.farmbot.id}"
+}
+
+resource "aws_apigatewayv2_stage" "farmbot" {
+  api_id      = aws_apigatewayv2_api.farmbot.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "farmbot_api_gw" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.farmbot.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.farmbot.execution_arn}/*/*"
+}
+
 # ── EventBridge Scheduler ─────────────────────────────────────────────────────
 
 resource "aws_scheduler_schedule" "weather_check" {

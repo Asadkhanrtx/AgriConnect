@@ -18,12 +18,14 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import AgricultureIcon from '@mui/icons-material/Agriculture';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip,
   ResponsiveContainer
 } from 'recharts';
 import axios from 'axios';
 import WeatherWidget from '../../components/WeatherWidget';
+import FarmBot from './FarmBot';
 
 const STATUS_COLORS = { PENDING: 'warning', IN_TRANSIT: 'info', DELIVERED: 'success' };
 const BID_COLORS    = { PENDING: 'warning', ACCEPTED: 'success', REJECTED: 'error' };
@@ -162,9 +164,7 @@ const FarmerDashboard = ({ user }) => {
       if (imageFile) {
         const fd = new FormData();
         fd.append('image', imageFile);
-        const imgRes = await axios.post('/api/media/upload/produce', fd, {
-          headers: { ...headers, 'Content-Type': 'multipart/form-data' }
-        });
+        const imgRes = await axios.post('/api/media/upload/produce', fd, { headers });
         image_url = imgRes.data.imageUrl;
       }
       const payload = { ...form, image_url, quantity: parseFloat(form.quantity), price: parseFloat(form.price) };
@@ -390,6 +390,8 @@ const FarmerDashboard = ({ user }) => {
             }
             icon={<GavelIcon fontSize="small" />} iconPosition="start"
           />
+          <Tab label="FarmBot AI" icon={<SmartToyIcon fontSize="small" />} iconPosition="start"
+            sx={{ '& .MuiTab-root': {} }} />
         </Tabs>
       </Box>
 
@@ -644,6 +646,9 @@ const FarmerDashboard = ({ user }) => {
           )}
         </Card>
       )}
+
+      {/* ── FarmBot AI ──────────────────────────────────────────────────────── */}
+      {tab === 3 && <FarmBot user={user} />}
 
       {/* ── Create / Edit Dialog ─────────────────────────────────────────────── */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth

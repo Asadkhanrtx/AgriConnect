@@ -77,6 +77,17 @@ output "jwt_secret_note" {
   value = "JWT secret stored in Secrets Manager: ${aws_secretsmanager_secret.jwt.name}"
 }
 
+# ── FarmBot ───────────────────────────────────────────────────────────────────
+output "farmbot_api_url" {
+  description = "FarmBot chatbot POST endpoint — set this as VITE_FARMBOT_API_URL in your frontend build"
+  value       = "${aws_apigatewayv2_stage.farmbot.invoke_url}/chat"
+}
+
+output "farmbot_critical_sns_arn" {
+  description = "Subscribe your agri officer email to this SNS topic for critical alerts"
+  value       = aws_sns_topic.farmbot_critical.arn
+}
+
 # ── SSH helpers ───────────────────────────────────────────────────────────────
 output "ssh_bastion" {
   value = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${module.ec2.bastion_public_ip}"
