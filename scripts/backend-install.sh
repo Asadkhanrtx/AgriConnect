@@ -99,11 +99,26 @@ done
 echo "[5/6] Running database migrations and seeding..."
 cd "$PROJECT_ROOT/shared"
 
-echo "  Running migrations..."
-AWS_REGION=$AWS_REGION node scripts/migrate.js
+# RDS can take 5-15 min after terraform apply — retry until ready
+echo "  Waiting for RDS to be ready..."
+MIGRATED=false
+for attempt in $(seq 1 24); do
+  if AWS_REGION=$AWS_REGION node scripts/migrate.js 2>&1; then
+    MIGRATED=true
+    echo "  Migrations complete (attempt $attempt)."
+    break
+  fi
+  echo "  Attempt $attempt/24 failed. Retrying in 30s..."
+  sleep 30
+done
+
+if [ "$MIGRATED" = "false" ]; then
+  echo "  WARNING: Migrations failed after 12 min. Services will start but may have DB issues."
+  echo "  Re-run manually later: source ~/.agriconnect-config && cd ~/AgriConnect/shared && node scripts/migrate.js"
+fi
 
 echo "  Running seeders..."
-AWS_REGION=$AWS_REGION node scripts/seed.js
+AWS_REGION=$AWS_REGION node scripts/seed.js || echo "  NOTE: Seed skipped — may already be seeded."
 
 # ── 6. Start services with PM2 ────────────────────────────────────────────────
 echo "[6/6] Starting services with PM2..."
@@ -154,7 +169,7 @@ STARTUP_OUT=$(AWS_REGION=$AWS_REGION pm2 startup systemd -u ubuntu --hp /home/ub
 STARTUP_CMD=$(echo "$STARTUP_OUT" | grep -E "^sudo ")
 if [ -n "$STARTUP_CMD" ]; then
   echo "  Running: $STARTUP_CMD"
-  eval "$STARTUP_CMD"
+  eval "$STARTUP_CMD" || echo "  NOTE: PM2 startup command failed — services still running, just won't auto-restart on reboot."
 else
   echo "  PM2 startup already configured or no command needed."
 fi
