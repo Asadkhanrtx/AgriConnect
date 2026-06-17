@@ -65,7 +65,7 @@ module "ec2" {
   sns_topic_arn           = aws_sns_topic.weather_alerts.arn
   events_topic_arn        = aws_sns_topic.events.arn
   notifications_queue_url = aws_sqs_queue.notifications.url
-  farmbot_api_url         = "${aws_apigatewayv2_stage.farmbot.invoke_url}/chat"
+  farmbot_api_url         = "${trimsuffix(aws_apigatewayv2_stage.farmbot.invoke_url, "/")}/chat"
 }
 
 module "alb" {

@@ -80,7 +80,7 @@ output "jwt_secret_note" {
 # ── FarmBot ───────────────────────────────────────────────────────────────────
 output "farmbot_api_url" {
   description = "FarmBot chatbot POST endpoint — set this as VITE_FARMBOT_API_URL in your frontend build"
-  value       = "${aws_apigatewayv2_stage.farmbot.invoke_url}/chat"
+  value       = "${trimsuffix(aws_apigatewayv2_stage.farmbot.invoke_url, "/")}/chat"
 }
 
 output "farmbot_critical_sns_arn" {
