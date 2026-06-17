@@ -7,15 +7,27 @@ import os
 def _fetch(path, token=None):
     alb_url = os.environ.get('ALB_URL', '')
     url = f"http://{alb_url}{path}"
+    print(f"[tools] _fetch → {url}")
     req = urllib.request.Request(url)
     if token:
         req.add_header('Authorization', f'Bearer {token}')
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode()
+            print(f"[tools] _fetch ← status={resp.status} len={len(raw)}")
+            return json.loads(raw)
     except urllib.error.HTTPError as e:
-        return {"error": f"HTTP {e.code}: {e.reason}"}
+        body = e.read().decode(errors='ignore')[:200]
+        print(f"[tools] _fetch HTTPError {e.code}: {body}")
+        return {"error": f"HTTP {e.code}", "detail": body}
+    except urllib.error.URLError as e:
+        print(f"[tools] _fetch URLError: {e.reason}")
+        return {"error": f"Connection failed: {e.reason}"}
+    except json.JSONDecodeError as e:
+        print(f"[tools] _fetch JSON decode error: {e}")
+        return {"error": "Non-JSON response from server"}
     except Exception as e:
+        print(f"[tools] _fetch unexpected error: {type(e).__name__}: {e}")
         return {"error": str(e)}
 
 
@@ -29,15 +41,18 @@ def search_listings(search=None, category=None, max_price=None, limit=10):
     qs = urllib.parse.urlencode(params)
     data = _fetch(f"/api/marketplace/listings?{qs}")
 
+    if isinstance(data, dict) and "error" in data:
+        return {"error": "Marketplace unavailable", "detail": data.get("error")}
+
     listings = data.get("listings", data) if isinstance(data, dict) else data
     if not isinstance(listings, list):
-        return {"error": "Could not fetch listings", "detail": str(data)}
+        return {"error": "Unexpected response format", "raw": str(data)[:200]}
 
     if max_price is not None:
         listings = [l for l in listings if float(l.get("price", 0)) <= float(max_price)]
 
     simplified = []
-    for l in listings[:limit]:
+    for l in listings[:int(limit)]:
         farmer = l.get("Farmer") or {}
         simplified.append({
             "id": l.get("id"),
@@ -63,9 +78,12 @@ def get_price_stats(product_name):
     qs = urllib.parse.urlencode({"search": product_name, "limit": 100})
     data = _fetch(f"/api/marketplace/listings?{qs}")
 
+    if isinstance(data, dict) and "error" in data:
+        return {"available": False, "message": f"Could not fetch price data: {data.get('error')}"}
+
     listings = data.get("listings", data) if isinstance(data, dict) else data
     if not isinstance(listings, list) or len(listings) == 0:
-        return {"available": False, "message": f"'{product_name}' is not listed in the marketplace right now."}
+        return {"available": False, "message": f"'{product_name}' is not currently listed in the marketplace."}
 
     prices = []
     for l in listings:
@@ -95,14 +113,14 @@ def get_listing_bids(listing_id, token=None):
     data = _fetch(f"/api/marketplace/bids/{int(listing_id)}", token=token)
 
     if isinstance(data, dict) and "error" in data:
-        return data
+        return {"error": data.get("error"), "note": "Bids require login — token may be missing or expired"}
 
     bids = data if isinstance(data, list) else data.get("bids", [])
     if not bids:
         return {
             "listing_id": listing_id,
             "bids_count": 0,
-            "message": "No bids placed yet. You can start with any amount.",
+            "message": "No bids placed yet on this listing. You can start with any reasonable amount.",
         }
 
     amounts = [float(b.get("amount", 0)) for b in bids if b.get("amount")]
@@ -122,5 +140,7 @@ def get_listing_bids(listing_id, token=None):
 
 def get_available_categories():
     data = _fetch("/api/marketplace/categories")
+    if isinstance(data, dict) and "error" in data:
+        return {"error": "Could not fetch categories", "detail": data.get("error")}
     categories = data if isinstance(data, list) else []
     return {"categories": categories, "count": len(categories)}

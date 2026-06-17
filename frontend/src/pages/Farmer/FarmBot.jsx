@@ -27,12 +27,12 @@ function ChatText({ text, color }) {
   return (
     <Typography component="div" sx={{ fontSize: '0.875rem', lineHeight: 1.75, color: color || 'inherit', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
       {cleaned.split('\n').map((line, i) => {
-        const bold = line.replace(/\*\*(.*?)\*\*/g, (_, m) => `§BOLD§${m}§/BOLD§`);
-        const parts = bold.split(/(§BOLD§.*?§\/BOLD§)/);
+        const bold = line.replace(/\*\*(.*?)\*\*/g, (_, m) => `§B§${m}§/B§`);
+        const parts = bold.split(/(§B§.*?§\/B§)/);
         return (
           <span key={i} style={{ display: 'block', marginBottom: line === '' ? '6px' : '1px' }}>
             {parts.map((p, j) =>
-              p.startsWith('§BOLD§') ? <strong key={j}>{p.replace(/§BOLD§|§\/BOLD§/g, '')}</strong> : p
+              p.startsWith('§B§') ? <strong key={j}>{p.replace(/§B§|§\/B§/g, '')}</strong> : p
             )}
           </span>
         );
@@ -49,7 +49,7 @@ const TypingDots = () => (
         animation: 'fb-bounce 1.2s ease infinite',
         animationDelay: `${i * 0.2}s`,
         '@keyframes fb-bounce': {
-          '0%,80%,100%': { transform: 'scale(0.6)', opacity: 0.4 },
+          '0%,80%,100%': { transform: 'scale(0.6)', opacity: 0.35 },
           '40%': { transform: 'scale(1)', opacity: 1 },
         },
       }} />
@@ -128,40 +128,41 @@ export default function FarmBot({ user }) {
     <Box sx={{
       display: 'flex', flexDirection: 'column', height: '76vh', maxHeight: 760,
       borderRadius: '20px', overflow: 'hidden', position: 'relative',
-      boxShadow: '0 8px 40px rgba(10,31,21,0.18)',
-      border: '1px solid rgba(18,53,36,0.10)',
+      boxShadow: '0 4px 32px rgba(18,53,36,0.10)',
+      border: '1px solid rgba(18,53,36,0.09)',
     }}>
-      {/* Background */}
+      {/* Subtle farm background */}
       <Box sx={{
         position: 'absolute', inset: 0, zIndex: 0,
         backgroundImage: `url('https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=1200&q=80')`,
         backgroundSize: 'cover', backgroundPosition: 'center',
-        filter: 'brightness(0.18) saturate(0.6)',
+        opacity: 0.07,
       }} />
-      <Box sx={{ position: 'absolute', inset: 0, zIndex: 0, background: 'rgba(8,22,13,0.82)' }} />
+      <Box sx={{ position: 'absolute', inset: 0, zIndex: 0, background: 'rgba(248,247,242,0.93)' }} />
 
       {/* Header */}
       <Box sx={{
         position: 'relative', zIndex: 2, px: 2.5, py: 1.75,
-        background: 'linear-gradient(135deg, rgba(8,22,13,0.97) 0%, rgba(18,53,36,0.95) 100%)',
-        borderBottom: '1px solid rgba(163,177,138,0.12)',
+        background: 'rgba(255,255,255,0.97)',
+        borderBottom: '1px solid rgba(18,53,36,0.08)',
         display: 'flex', alignItems: 'center', gap: 1.5,
+        backdropFilter: 'blur(12px)',
       }}>
         <Box sx={{ position: 'relative' }}>
-          <Avatar sx={{ width: 40, height: 40, background: 'linear-gradient(135deg, #1a4a2e, #3E5F44)', border: '2px solid rgba(163,177,138,0.3)' }}>
-            <AgricultureIcon sx={{ color: '#A3B18A', fontSize: 20 }} />
+          <Avatar sx={{ width: 40, height: 40, background: 'linear-gradient(135deg, #1a4a2e, #3E5F44)', border: '2px solid rgba(163,177,138,0.35)' }}>
+            <AgricultureIcon sx={{ color: '#fff', fontSize: 20 }} />
           </Avatar>
-          <Box sx={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, borderRadius: '50%', bgcolor: '#4CAF50', border: '1.5px solid #0a1f15', boxShadow: '0 0 6px #4CAF50' }} />
+          <Box sx={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, borderRadius: '50%', bgcolor: '#4CAF50', border: '1.5px solid white', boxShadow: '0 0 6px rgba(76,175,80,0.6)' }} />
         </Box>
         <Box flex={1}>
-          <Typography sx={{ fontFamily: '"Satoshi", sans-serif', fontWeight: 800, color: 'white', fontSize: '1rem', lineHeight: 1.1 }}>
+          <Typography sx={{ fontFamily: '"Satoshi", sans-serif', fontWeight: 800, color: '#0d2818', fontSize: '1rem', lineHeight: 1.1 }}>
             FarmBot AI
           </Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(163,177,138,0.75)', fontSize: '0.68rem', letterSpacing: '0.03em' }}>
+          <Typography variant="caption" sx={{ color: '#6b8f71', fontSize: '0.68rem', letterSpacing: '0.02em' }}>
             Powered by Amazon Nova · Crop Advisory & Disease Diagnosis
           </Typography>
         </Box>
-        <Chip label="AI" size="small" sx={{ bgcolor: 'rgba(217,164,65,0.15)', color: '#D9A441', fontWeight: 700, fontSize: 10, border: '1px solid rgba(217,164,65,0.3)', borderRadius: '6px' }} />
+        <Chip label="AI" size="small" sx={{ bgcolor: 'rgba(217,164,65,0.12)', color: '#B8860B', fontWeight: 700, fontSize: 10, border: '1px solid rgba(217,164,65,0.3)', borderRadius: '6px' }} />
       </Box>
 
       {/* Messages */}
@@ -169,14 +170,14 @@ export default function FarmBot({ user }) {
         position: 'relative', zIndex: 1, flex: 1, overflowY: 'auto', px: 2.5, py: 2,
         display: 'flex', flexDirection: 'column', gap: 2,
         '&::-webkit-scrollbar': { width: 4 },
-        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(163,177,138,0.2)', borderRadius: 4 },
+        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(18,53,36,0.15)', borderRadius: 4 },
       }}>
         {messages.map(msg => (
           <Fade in key={msg.id} timeout={300}>
             <Box display="flex" justifyContent={msg.role === 'user' ? 'flex-end' : 'flex-start'} gap={1} alignItems="flex-end">
               {msg.role === 'bot' && (
-                <Avatar sx={{ width: 30, height: 30, flexShrink: 0, mb: 0.5, background: 'linear-gradient(135deg, #1a4a2e, #3E5F44)', border: '1px solid rgba(163,177,138,0.2)' }}>
-                  <AgricultureIcon sx={{ fontSize: 15, color: '#A3B18A' }} />
+                <Avatar sx={{ width: 30, height: 30, flexShrink: 0, mb: 0.5, background: 'linear-gradient(135deg, #1a4a2e, #3E5F44)', border: '1.5px solid rgba(163,177,138,0.3)' }}>
+                  <AgricultureIcon sx={{ fontSize: 15, color: '#fff' }} />
                 </Avatar>
               )}
               <Box sx={{ maxWidth: '78%' }}>
@@ -189,19 +190,24 @@ export default function FarmBot({ user }) {
                   px: 2, py: 1.5,
                   borderRadius: msg.role === 'user' ? '18px 4px 18px 18px' : '4px 18px 18px 18px',
                   background: msg.role === 'user'
-                    ? 'linear-gradient(135deg, #1a4a2e 0%, #2d6a47 100%)'
-                    : 'rgba(255,255,255,0.07)',
-                  backdropFilter: msg.role === 'bot' ? 'blur(12px)' : 'none',
-                  border: msg.role === 'bot' ? '1px solid rgba(163,177,138,0.12)' : 'none',
+                    ? 'linear-gradient(135deg, #0d3320 0%, #1e6040 100%)'
+                    : 'rgba(255,255,255,0.92)',
+                  backdropFilter: 'blur(8px)',
+                  border: msg.role === 'bot'
+                    ? '1px solid rgba(18,53,36,0.09)'
+                    : 'none',
                   boxShadow: msg.role === 'user'
-                    ? '0 4px 16px rgba(0,0,0,0.3)'
-                    : '0 2px 12px rgba(0,0,0,0.2)',
+                    ? '0 4px 16px rgba(13,51,32,0.22)'
+                    : '0 2px 12px rgba(18,53,36,0.07)',
                 }}>
-                  <ChatText text={msg.text} color={msg.role === 'user' ? 'rgba(255,255,255,0.95)' : 'rgba(220,235,220,0.95)'} />
+                  <ChatText
+                    text={msg.text}
+                    color={msg.role === 'user' ? 'rgba(255,255,255,0.95)' : '#1a2e1a'}
+                  />
                   {msg.critical && (
-                    <Chip label="CRITICAL — Agri Officer Alerted" size="small" sx={{ mt: 1.5, bgcolor: 'rgba(198,40,40,0.2)', color: '#ff6b6b', fontWeight: 700, fontSize: 10, borderRadius: '6px', border: '1px solid rgba(198,40,40,0.3)' }} />
+                    <Chip label="CRITICAL — Agri Officer Alerted" size="small" sx={{ mt: 1.5, bgcolor: 'rgba(198,40,40,0.10)', color: '#c62828', fontWeight: 700, fontSize: 10, borderRadius: '6px', border: '1px solid rgba(198,40,40,0.2)' }} />
                   )}
-                  <Typography variant="caption" sx={{ display: 'block', mt: 0.75, opacity: 0.4, fontSize: '0.65rem', textAlign: 'right', color: msg.role === 'user' ? 'white' : '#A3B18A' }}>
+                  <Typography variant="caption" sx={{ display: 'block', mt: 0.75, opacity: 0.45, fontSize: '0.65rem', textAlign: 'right', color: msg.role === 'user' ? 'rgba(255,255,255,0.7)' : '#4a6b52' }}>
                     {msg.ts.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                   </Typography>
                 </Paper>
@@ -214,9 +220,9 @@ export default function FarmBot({ user }) {
           <Fade in timeout={200}>
             <Box display="flex" gap={1} alignItems="flex-end">
               <Avatar sx={{ width: 30, height: 30, flexShrink: 0, mb: 0.5, background: 'linear-gradient(135deg, #1a4a2e, #3E5F44)' }}>
-                <AgricultureIcon sx={{ fontSize: 15, color: '#A3B18A' }} />
+                <AgricultureIcon sx={{ fontSize: 15, color: '#fff' }} />
               </Avatar>
-              <Paper elevation={0} sx={{ px: 2, py: 1.5, borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(12px)', border: '1px solid rgba(163,177,138,0.12)' }}>
+              <Paper elevation={0} sx={{ px: 2, py: 1.5, borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', border: '1px solid rgba(18,53,36,0.09)', boxShadow: '0 2px 12px rgba(18,53,36,0.07)' }}>
                 <TypingDots />
               </Paper>
             </Box>
@@ -230,19 +236,19 @@ export default function FarmBot({ user }) {
         <Box sx={{ position: 'relative', zIndex: 2, px: 2.5, pb: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {SUGGESTIONS.map((s, i) => (
             <Chip key={i} label={s} size="small" onClick={() => handleSend(s)}
-              sx={{ cursor: 'pointer', fontWeight: 500, fontSize: '0.72rem', borderRadius: '8px', bgcolor: 'rgba(163,177,138,0.1)', color: 'rgba(200,225,200,0.9)', border: '1px solid rgba(163,177,138,0.2)', '&:hover': { bgcolor: 'rgba(163,177,138,0.2)' } }} />
+              sx={{ cursor: 'pointer', fontWeight: 500, fontSize: '0.72rem', borderRadius: '8px', bgcolor: 'rgba(18,53,36,0.06)', color: '#1a3d25', border: '1px solid rgba(18,53,36,0.12)', '&:hover': { bgcolor: 'rgba(18,53,36,0.11)' } }} />
           ))}
         </Box>
       )}
 
       {/* Image preview */}
       {imagePreview && (
-        <Box sx={{ position: 'relative', zIndex: 2, px: 2.5, py: 1, background: 'rgba(255,255,255,0.04)', borderTop: '1px solid rgba(163,177,138,0.1)', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{ width: 48, height: 48, borderRadius: '10px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(163,177,138,0.2)' }}>
+        <Box sx={{ position: 'relative', zIndex: 2, px: 2.5, py: 1, background: 'rgba(248,247,242,0.97)', borderTop: '1px solid rgba(18,53,36,0.07)', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box sx={{ width: 48, height: 48, borderRadius: '10px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(18,53,36,0.12)' }}>
             <img src={imagePreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </Box>
-          <Typography variant="caption" sx={{ color: 'rgba(200,220,200,0.7)', flexGrow: 1, fontSize: '0.75rem' }}>{imageFile?.name}</Typography>
-          <IconButton size="small" onClick={clearImage} sx={{ color: '#ff6b6b', bgcolor: 'rgba(255,107,107,0.1)', '&:hover': { bgcolor: 'rgba(255,107,107,0.2)' } }}>
+          <Typography variant="caption" sx={{ color: '#6b8f71', flexGrow: 1, fontSize: '0.75rem' }}>{imageFile?.name}</Typography>
+          <IconButton size="small" onClick={clearImage} sx={{ color: '#c62828', bgcolor: 'rgba(198,40,40,0.08)', '&:hover': { bgcolor: 'rgba(198,40,40,0.15)' } }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -251,21 +257,22 @@ export default function FarmBot({ user }) {
       {/* Error */}
       {error && (
         <Box px={2.5} pb={0.5} sx={{ position: 'relative', zIndex: 2 }}>
-          <Alert severity="error" sx={{ borderRadius: '10px', py: 0.5, bgcolor: 'rgba(198,40,40,0.15)', color: '#ff6b6b', border: '1px solid rgba(198,40,40,0.25)' }} onClose={() => setError('')}>{error}</Alert>
+          <Alert severity="error" sx={{ borderRadius: '10px', py: 0.5 }} onClose={() => setError('')}>{error}</Alert>
         </Box>
       )}
 
       {/* Input */}
       <Box sx={{
         position: 'relative', zIndex: 2, px: 2, py: 1.5,
-        background: 'rgba(8,22,13,0.92)', backdropFilter: 'blur(12px)',
-        borderTop: '1px solid rgba(163,177,138,0.1)',
+        background: 'rgba(255,255,255,0.97)',
+        borderTop: '1px solid rgba(18,53,36,0.08)',
         display: 'flex', alignItems: 'flex-end', gap: 1,
+        backdropFilter: 'blur(12px)',
       }}>
         <input type="file" accept="image/*" ref={fileRef} hidden onChange={handleImageChange} />
         <Tooltip title="Upload plant photo">
           <IconButton onClick={() => fileRef.current?.click()} disabled={loading}
-            sx={{ color: imageFile ? '#A3B18A' : 'rgba(163,177,138,0.4)', bgcolor: imageFile ? 'rgba(163,177,138,0.1)' : 'transparent', mb: 0.25, '&:hover': { bgcolor: 'rgba(163,177,138,0.15)' } }}>
+            sx={{ color: imageFile ? '#1a4a2e' : 'rgba(18,53,36,0.35)', bgcolor: imageFile ? 'rgba(18,53,36,0.08)' : 'transparent', mb: 0.25, '&:hover': { bgcolor: 'rgba(18,53,36,0.08)' } }}>
             <AttachFileIcon />
           </IconButton>
         </Tooltip>
@@ -276,24 +283,24 @@ export default function FarmBot({ user }) {
           disabled={loading}
           sx={{
             '& .MuiOutlinedInput-root': {
-              borderRadius: '12px', fontSize: '0.875rem', color: 'rgba(220,235,220,0.95)',
-              '& fieldset': { borderColor: 'rgba(163,177,138,0.2)' },
-              '&:hover fieldset': { borderColor: 'rgba(163,177,138,0.4)' },
-              '&.Mui-focused fieldset': { borderColor: 'rgba(163,177,138,0.6)' },
-              bgcolor: 'rgba(255,255,255,0.05)',
+              borderRadius: '12px', fontSize: '0.875rem', color: '#1a2e1a',
+              bgcolor: '#f4f6f2',
+              '& fieldset': { borderColor: 'rgba(18,53,36,0.15)' },
+              '&:hover fieldset': { borderColor: 'rgba(18,53,36,0.30)' },
+              '&.Mui-focused fieldset': { borderColor: '#3E5F44' },
             },
-            '& input::placeholder, & textarea::placeholder': { color: 'rgba(163,177,138,0.4)' },
+            '& textarea::placeholder': { color: 'rgba(18,53,36,0.35)' },
           }}
         />
         <IconButton onClick={() => handleSend()} disabled={loading || (!input.trim() && !imageFile)}
           sx={{
             mb: 0.25, width: 44, height: 44, borderRadius: '12px',
-            background: (!loading && (input.trim() || imageFile)) ? 'linear-gradient(135deg, #1a4a2e, #3E5F44)' : 'rgba(163,177,138,0.08)',
-            color: (!loading && (input.trim() || imageFile)) ? 'white' : 'rgba(163,177,138,0.3)',
+            background: (!loading && (input.trim() || imageFile)) ? 'linear-gradient(135deg, #0d3320, #1e6040)' : 'rgba(18,53,36,0.07)',
+            color: (!loading && (input.trim() || imageFile)) ? 'white' : 'rgba(18,53,36,0.25)',
             transition: 'all 0.2s',
             '&:hover': { background: 'linear-gradient(135deg, #123524, #2d6a47)' },
           }}>
-          {loading ? <CircularProgress size={18} sx={{ color: '#A3B18A' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
+          {loading ? <CircularProgress size={18} sx={{ color: '#3E5F44' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
         </IconButton>
       </Box>
     </Box>
