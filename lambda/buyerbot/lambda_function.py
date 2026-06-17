@@ -1,5 +1,10 @@
 import json
+import re
 from bedrock_client import get_response
+
+
+def _clean(text):
+    return re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL).strip()
 
 
 def _cors(status, body):
@@ -30,7 +35,7 @@ def lambda_handler(event, context):
         if len(message) > 1000:
             return _cors(400, {"error": "Message too long (max 1000 characters)"})
 
-        text = get_response(message, buyer_token=buyer_token)
+        text = _clean(get_response(message, buyer_token=buyer_token))
         return _cors(200, {"response": text})
 
     except Exception as e:

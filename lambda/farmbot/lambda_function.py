@@ -1,9 +1,14 @@
 import json
 import base64
 import os
+import re
 from bedrock_client import call_nova_lite, build_text_payload, build_multimodal_payload
 from s3_handler import store_photo, store_chat_log
 from sns_handler import trigger_critical_alert
+
+
+def _clean(text):
+    return re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL).strip()
 
 MAX_IMAGE_BYTES = int(os.environ.get('MAX_IMAGE_SIZE_MB', '5')) * 1024 * 1024
 
@@ -45,7 +50,7 @@ def lambda_handler(event, context):
         else:
             payload = build_text_payload(message)
 
-        response_text = call_nova_lite(payload)
+        response_text = _clean(call_nova_lite(payload))
 
         is_critical = 'CRITICAL: YES' in response_text
         if is_critical:

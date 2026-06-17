@@ -228,17 +228,33 @@ const FarmerDashboard = ({ user }) => {
   );
 
   return (
-    <Box>
+    <Box sx={{ position: 'relative' }}>
+      {/* Subtle page-level farm background */}
+      <Box sx={{
+        position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none',
+        backgroundImage: `url('https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=1600&q=80')`,
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        opacity: 0.04,
+      }} />
+
       {/* ── Hero Banner ─────────────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <Box sx={{
-          background: 'linear-gradient(135deg, #0a1f15 0%, #123524 45%, #3E5F44 100%)',
+          background: 'linear-gradient(135deg, rgba(8,22,14,0.97) 0%, rgba(14,40,26,0.93) 50%, rgba(42,74,50,0.90) 100%)',
           borderRadius: '20px',
           mb: 3,
           p: { xs: 3, md: 4 },
           position: 'relative',
           overflow: 'hidden',
         }}>
+          {/* Hero photo layer */}
+          <Box sx={{
+            position: 'absolute', inset: 0, zIndex: 0,
+            backgroundImage: `url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1400&q=80')`,
+            backgroundSize: 'cover', backgroundPosition: 'center 40%',
+            opacity: 0.28,
+            mixBlendMode: 'luminosity',
+          }} />
           <Box sx={{ position: 'absolute', right: -60, top: -60, width: 240, height: 240, borderRadius: '50%', bgcolor: 'rgba(163,177,138,0.06)' }} />
           <Box sx={{ position: 'absolute', right: 70, bottom: -80, width: 320, height: 320, borderRadius: '50%', bgcolor: 'rgba(217,164,65,0.05)' }} />
           <Box sx={{ position: 'absolute', left: -40, top: -40, width: 180, height: 180, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.03)' }} />

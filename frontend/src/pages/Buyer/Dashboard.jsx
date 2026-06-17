@@ -200,17 +200,33 @@ const BuyerDashboard = ({ user }) => {
   const acceptedBids = bids.filter(b => b.status === 'ACCEPTED').length;
 
   return (
-    <Box>
+    <Box sx={{ position: 'relative' }}>
+      {/* Subtle page-level market background */}
+      <Box sx={{
+        position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none',
+        backgroundImage: `url('https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=1600&q=80')`,
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        opacity: 0.04,
+      }} />
+
       {/* ── Hero Banner ─────────────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <Box sx={{
-          background: 'linear-gradient(135deg, #0a1f15 0%, #123524 45%, #3E5F44 100%)',
+          background: 'linear-gradient(135deg, rgba(6,18,10,0.97) 0%, rgba(14,40,26,0.93) 50%, rgba(42,74,50,0.90) 100%)',
           borderRadius: '20px',
           mb: 3,
           p: { xs: 3, md: 4 },
           position: 'relative',
           overflow: 'hidden',
         }}>
+          {/* Hero photo layer */}
+          <Box sx={{
+            position: 'absolute', inset: 0, zIndex: 0,
+            backgroundImage: `url('https://images.unsplash.com/photo-1542838132-92c53300491e?w=1400&q=80')`,
+            backgroundSize: 'cover', backgroundPosition: 'center 35%',
+            opacity: 0.25,
+            mixBlendMode: 'luminosity',
+          }} />
           <Box sx={{ position: 'absolute', right: -50, top: -50, width: 220, height: 220, borderRadius: '50%', bgcolor: 'rgba(163,177,138,0.06)' }} />
           <Box sx={{ position: 'absolute', right: 80, bottom: -80, width: 300, height: 300, borderRadius: '50%', bgcolor: 'rgba(217,164,65,0.05)' }} />
           <Box sx={{ position: 'absolute', left: -30, bottom: -30, width: 180, height: 180, borderRadius: '50%', bgcolor: 'rgba(0,0,0,0.06)' }} />
