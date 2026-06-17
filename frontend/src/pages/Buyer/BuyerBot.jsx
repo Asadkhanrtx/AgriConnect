@@ -1,245 +1,210 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  Box, TextField, IconButton, Typography, Paper, CircularProgress,
-  Avatar, Chip, Fade
-} from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
+import React from 'react';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import PersonIcon from '@mui/icons-material/Person';
 import SearchIcon from '@mui/icons-material/Search';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import BarChartIcon from '@mui/icons-material/BarChart';
 import GavelIcon from '@mui/icons-material/Gavel';
-import CategoryIcon from '@mui/icons-material/Category';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import AIChatBot from '../../components/AIChatBot';
 
 const BUYERBOT_API_URL = import.meta.env.VITE_BUYERBOT_API_URL || '';
 
-const SUGGESTIONS = [
-  { icon: <SearchIcon sx={{ fontSize: 13 }} />, text: 'Find tomatoes under ₹30/kg' },
-  { icon: <TrendingUpIcon sx={{ fontSize: 13 }} />, text: 'What is the average price of wheat?' },
-  { icon: <GavelIcon sx={{ fontSize: 13 }} />, text: 'What should I bid on listing #1?' },
-  { icon: <CategoryIcon sx={{ fontSize: 13 }} />, text: 'What categories are available today?' },
-];
-
-function stripThinking(text) {
-  return (text || '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-}
-
-function ChatText({ text, color }) {
-  const cleaned = stripThinking(text);
+// ─── BuyerBot SVG Illustration ─────────────────────────────────────────────────
+function BuyerBotIllustration() {
   return (
-    <Typography component="div" sx={{ fontSize: '0.875rem', lineHeight: 1.75, color: color || 'inherit', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-      {cleaned.split('\n').map((line, i) => {
-        const bold = line.replace(/\*\*(.*?)\*\*/g, (_, m) => `§B§${m}§/B§`);
-        const parts = bold.split(/(§B§.*?§\/B§)/);
-        return (
-          <span key={i} style={{ display: 'block', marginBottom: line === '' ? '6px' : '1px' }}>
-            {parts.map((p, j) =>
-              p.startsWith('§B§') ? <strong key={j}>{p.replace(/§B§|§\/B§/g, '')}</strong> : p
-            )}
-          </span>
-        );
-      })}
-    </Typography>
+    <svg viewBox="0 0 400 440" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%' }}>
+      <defs>
+        <radialGradient id="bbBg" cx="50%" cy="48%" r="52%">
+          <stop offset="0%" stopColor="#C8EDD4" />
+          <stop offset="100%" stopColor="#E8F7EE" />
+        </radialGradient>
+        <linearGradient id="bbRobot" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#25A04A" />
+          <stop offset="100%" stopColor="#184F2D" />
+        </linearGradient>
+        <linearGradient id="bbBasket" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#8B5E3C" />
+          <stop offset="100%" stopColor="#5C3D22" />
+        </linearGradient>
+        <linearGradient id="bbCoin" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FFD740" />
+          <stop offset="100%" stopColor="#FFA000" />
+        </linearGradient>
+      </defs>
+
+      {/* Background glow */}
+      <ellipse cx="200" cy="220" rx="190" ry="195" fill="url(#bbBg)" />
+
+      {/* Ground */}
+      <ellipse cx="200" cy="408" rx="175" ry="34" fill="#A8D8B4" opacity="0.55" />
+      <ellipse cx="80"  cy="400" rx="90"  ry="22" fill="#B8E6C4" opacity="0.4"  />
+      <ellipse cx="330" cy="402" rx="80"  ry="20" fill="#B8E6C4" opacity="0.35" />
+
+      {/* ── Market stall / price tag (top right) ── */}
+      <rect x="300" y="60" width="86" height="62" rx="16" fill="white" opacity="0.85" />
+      <rect x="300" y="60" width="86" height="62" rx="16" fill="none" stroke="#1B7F3A" strokeWidth="2" opacity="0.4" />
+      <text x="343" y="86" textAnchor="middle" fontSize="11" fontWeight="700" fill="#184F2D" opacity="0.8">BEST</text>
+      <text x="343" y="102" textAnchor="middle" fontSize="11" fontWeight="700" fill="#184F2D" opacity="0.8">PRICE</text>
+      <text x="343" y="116" textAnchor="middle" fontSize="9" fill="#1B7F3A" opacity="0.65">TODAY</text>
+      {/* Tag hole */}
+      <circle cx="343" cy="64" r="5" fill="#1B7F3A" opacity="0.5" />
+      {/* Tag string */}
+      <line x1="343" y1="59" x2="343" y2="48" stroke="#1B7F3A" strokeWidth="1.5" strokeDasharray="3 2" opacity="0.5" />
+
+      {/* ── Coins (left side) ── */}
+      <ellipse cx="72" cy="290" rx="28" ry="10" fill="url(#bbCoin)" opacity="0.8" />
+      <rect x="44" y="270" width="56" height="20" rx="3" fill="url(#bbCoin)" opacity="0.8" />
+      <ellipse cx="72" cy="270" rx="28" ry="10" fill="#FFE082" opacity="0.95" />
+      <text x="72" y="274" textAnchor="middle" fontSize="11" fontWeight="900" fill="#795548" opacity="0.7">₹</text>
+
+      <ellipse cx="72" cy="252" rx="24" ry="8.5" fill="url(#bbCoin)" opacity="0.75" />
+      <rect x="48" y="234" width="48" height="18" rx="3" fill="url(#bbCoin)" opacity="0.72" />
+      <ellipse cx="72" cy="234" rx="24" ry="8.5" fill="#FFE082" opacity="0.92" />
+      <text x="72" y="238" textAnchor="middle" fontSize="10" fontWeight="900" fill="#795548" opacity="0.65">₹</text>
+
+      {/* ── Vegetables floating (right) ── */}
+      {/* Carrot */}
+      <ellipse cx="330" cy="255" rx="8" ry="22" fill="#FF6F00" opacity="0.82" transform="rotate(18 330 255)" />
+      <line x1="325" y1="233" x2="322" y2="218" stroke="#1B7F3A" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="330" y1="231" x2="330" y2="216" stroke="#25A04A" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="335" y1="233" x2="338" y2="218" stroke="#1B7F3A" strokeWidth="2.5" strokeLinecap="round" />
+
+      {/* Capsicum */}
+      <ellipse cx="360" cy="290" rx="16" ry="20" fill="#4CAF50" opacity="0.8" />
+      <line x1="360" y1="270" x2="360" y2="258" stroke="#184F2D" strokeWidth="2.5" strokeLinecap="round" />
+      <ellipse cx="349" cy="285" rx="5"  ry="10" fill="#388E3C" opacity="0.55" />
+      <ellipse cx="371" cy="285" rx="5"  ry="10" fill="#388E3C" opacity="0.55" />
+
+      {/* ── Robot head ── */}
+      <rect x="148" y="102" width="104" height="90" rx="24" fill="url(#bbRobot)" />
+      {/* Glare */}
+      <rect x="155" y="109" width="44" height="32" rx="14" fill="rgba(255,255,255,0.11)" />
+      {/* Eyes */}
+      <circle cx="176" cy="148" r="17" fill="white" />
+      <circle cx="224" cy="148" r="17" fill="white" />
+      <circle cx="180" cy="153" r="9"  fill="#1B7F3A" />
+      <circle cx="228" cy="153" r="9"  fill="#1B7F3A" />
+      <circle cx="183" cy="150" r="3.5" fill="white"  />
+      <circle cx="231" cy="150" r="3.5" fill="white"  />
+      {/* Smile */}
+      <path d="M 172 174 Q 200 190 228 174" stroke="rgba(255,255,255,0.85)" strokeWidth="3" fill="none" strokeLinecap="round" />
+      {/* Antenna */}
+      <line x1="200" y1="102" x2="200" y2="74" stroke="#1B7F3A" strokeWidth="4" strokeLinecap="round" />
+      <circle cx="200" cy="66" r="12" fill="#25A04A" />
+      <circle cx="200" cy="66" r="6"  fill="white" opacity="0.8" />
+
+      {/* Neck */}
+      <rect x="188" y="192" width="24" height="18" rx="9" fill="#184F2D" />
+
+      {/* ── Robot body ── */}
+      <rect x="143" y="209" width="114" height="92" rx="24" fill="url(#bbRobot)" />
+      {/* Chest panel */}
+      <rect x="165" y="225" width="70" height="52" rx="15" fill="rgba(255,255,255,0.12)" />
+      {/* Chart bars on chest */}
+      <rect x="174" y="256" width="8" height="14" rx="3" fill="#4ADE80" opacity="0.85" />
+      <rect x="186" y="248" width="8" height="22" rx="3" fill="#4ADE80" opacity="0.7"  />
+      <rect x="198" y="242" width="8" height="28" rx="3" fill="#4ADE80" opacity="0.9"  />
+      <rect x="210" y="252" width="8" height="18" rx="3" fill="#4ADE80" opacity="0.65" />
+      <rect x="222" y="245" width="8" height="25" rx="3" fill="#4ADE80" opacity="0.75" />
+
+      {/* ── Arms ── */}
+      <rect x="104" y="215" width="36" height="70" rx="18" fill="url(#bbRobot)" />
+      <circle cx="122" cy="291" r="17" fill="url(#bbRobot)" />
+      <rect x="260" y="215" width="36" height="70" rx="18" fill="url(#bbRobot)" />
+      <circle cx="278" cy="291" r="17" fill="url(#bbRobot)" />
+
+      {/* Left hand */}
+      <circle cx="122" cy="300" r="13" fill="#184F2D" />
+
+      {/* Right arm holds basket */}
+      <circle cx="278" cy="300" r="13" fill="#184F2D" />
+
+      {/* ── Market basket ── */}
+      <path d="M 262 298 Q 262 330 290 334 Q 318 338 322 316 Q 326 295 306 292 Q 290 290 262 298 Z" fill="url(#bbBasket)" opacity="0.85" />
+      {/* Basket weave lines */}
+      <line x1="265" y1="305" x2="320" y2="300" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+      <line x1="266" y1="315" x2="321" y2="308" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+      <line x1="275" y1="293" x2="270" y2="330" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+      <line x1="292" y1="291" x2="290" y2="332" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+      <line x1="308" y1="292" x2="310" y2="332" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+      {/* Basket handle */}
+      <path d="M 272 296 Q 292 272 312 296" stroke="url(#bbBasket)" strokeWidth="5" fill="none" strokeLinecap="round" />
+      {/* Items in basket (peaking out) */}
+      <circle cx="280" cy="292" r="10" fill="#E53935" opacity="0.85" />
+      <circle cx="296" cy="289" r="10" fill="#FF6F00" opacity="0.8"  />
+      <circle cx="311" cy="292" r="9"  fill="#4CAF50" opacity="0.85" />
+
+      {/* ── Legs ── */}
+      <rect x="160" y="300" width="36" height="60" rx="18" fill="url(#bbRobot)" />
+      <rect x="204" y="300" width="36" height="60" rx="18" fill="url(#bbRobot)" />
+      {/* Feet */}
+      <rect x="153" y="352" width="48" height="18" rx="9" fill="#184F2D" />
+      <rect x="199" y="352" width="48" height="18" rx="9" fill="#184F2D" />
+
+      {/* Floating sparkles / data dots */}
+      <circle cx="105" cy="170" r="6"  fill="#FFD740" opacity="0.55" />
+      <circle cx="302" cy="162" r="5"  fill="#4ADE80" opacity="0.6"  />
+      <circle cx="92"  cy="250" r="4"  fill="#FFD740" opacity="0.4"  />
+      <circle cx="145" cy="82"  r="4"  fill="#4ADE80" opacity="0.45" />
+      <circle cx="262" cy="88"  r="5"  fill="#FFD740" opacity="0.5"  />
+      {/* Price tag floating */}
+      <rect x="68" y="145" width="52" height="28" rx="8" fill="white" opacity="0.75" />
+      <text x="94" y="164" textAnchor="middle" fontSize="12" fontWeight="800" fill="#184F2D" opacity="0.8">₹LIVE</text>
+    </svg>
   );
 }
 
-const TypingDots = () => (
-  <Box display="flex" gap={0.6} alignItems="center" py={0.5}>
-    {[0, 1, 2].map(i => (
-      <Box key={i} sx={{
-        width: 7, height: 7, borderRadius: '50%', bgcolor: '#A3B18A',
-        animation: 'bb-bounce 1.1s infinite',
-        animationDelay: `${i * 0.18}s`,
-        '@keyframes bb-bounce': {
-          '0%,80%,100%': { transform: 'scale(0.65)', opacity: 0.35 },
-          '40%': { transform: 'scale(1)', opacity: 1 },
-        },
-      }} />
-    ))}
-  </Box>
-);
+// ─── BuyerBot capability config ───────────────────────────────────────────────
+const CAPABILITIES = [
+  { icon: <SearchIcon />,       title: 'Find Produce',           desc: 'Search live marketplace listings by product, category, or price range.' },
+  { icon: <AttachMoneyIcon />,  title: 'Price Intelligence',     desc: 'Get real-time min, max, and average prices for any agricultural commodity.' },
+  { icon: <BarChartIcon />,     title: 'Market Analytics',       desc: 'Live marketplace stats — volume, trends, and availability insights.' },
+  { icon: <GavelIcon />,        title: 'Smart Bid Strategy',     desc: 'See current bids on any listing and get competitive bidding recommendations.' },
+  { icon: <Inventory2Icon />,   title: 'Availability Search',    desc: 'Find out what categories and products are available in the marketplace today.' },
+  { icon: <TrendingUpIcon />,   title: 'Demand Forecasting',     desc: 'Understand demand trends to time your purchases for the best value.' },
+];
 
+const QUICK_ACTIONS = [
+  'Find tomatoes under ₹30/kg',
+  'Average wheat price today',
+  'What should I bid today?',
+  'Show available vegetables',
+  'Best deals near me',
+];
+
+// ─── BuyerBot Page ────────────────────────────────────────────────────────────
 export default function BuyerBot({ user }) {
-  const [messages, setMessages] = useState([{
-    role: 'bot',
-    text: `Hello ${user?.first_name || 'there'}! I'm your AgriConnect BuyerBot.\n\nI can help you with real-time data from the marketplace:\n\n**Find Produce** — "Find me tomatoes under ₹30/kg"\n**Price Intelligence** — "What's the average price of wheat today?"\n**Bid Strategy** — "What should I bid on listing #3?"\n**What's Available** — "Show me all categories available"\n\nAll answers come from live marketplace data — no guessing.`,
-  }]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(true);
-  const bottomRef = useRef(null);
   const token = localStorage.getItem('token');
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
-
-  const send = async (override) => {
-    const msg = (override || input).trim();
-    if (!msg || loading) return;
-    setInput('');
-    setShowSuggestions(false);
-    setMessages(prev => [...prev, { role: 'user', text: msg }]);
-    setLoading(true);
-
-    try {
-      const res = await fetch(BUYERBOT_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, token }),
-      });
-      const data = await res.json();
-      setMessages(prev => [...prev, { role: 'bot', text: data.response || data.error || 'Something went wrong.' }]);
-    } catch {
-      setMessages(prev => [...prev, { role: 'bot', text: 'BuyerBot is temporarily unavailable. Please try again.' }]);
-    } finally {
-      setLoading(false);
-    }
+  const onSend = async (message) => {
+    const res = await fetch(BUYERBOT_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, token }),
+    });
+    const data = await res.json();
+    return {
+      text: data.response || data.error || 'Something went wrong.',
+    };
   };
 
   return (
-    <Box sx={{
-      display: 'flex', flexDirection: 'column', height: '76vh', maxHeight: 760,
-      borderRadius: '20px', overflow: 'hidden', position: 'relative',
-      boxShadow: '0 4px 32px rgba(18,53,36,0.10)',
-      border: '1px solid rgba(18,53,36,0.09)',
-    }}>
-      {/* Subtle market background */}
-      <Box sx={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: `url('https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&q=80')`,
-        backgroundSize: 'cover', backgroundPosition: 'center',
-        opacity: 0.06,
-      }} />
-      <Box sx={{ position: 'absolute', inset: 0, zIndex: 0, background: 'rgba(248,247,242,0.93)' }} />
+    <AIChatBot
+      botName="BuyerBot AI"
+      subtitle="Marketplace Intelligence 🛒"
+      footerText="Powered by AgriConnect • Live Marketplace Data 🛒"
+      BotIcon={<SmartToyIcon />}
 
-      {/* Header */}
-      <Box sx={{
-        position: 'relative', zIndex: 2, px: 2.5, py: 1.75,
-        background: 'rgba(255,255,255,0.97)',
-        borderBottom: '1px solid rgba(18,53,36,0.08)',
-        display: 'flex', alignItems: 'center', gap: 1.5,
-        backdropFilter: 'blur(12px)',
-      }}>
-        <Box sx={{ position: 'relative' }}>
-          <Avatar sx={{ width: 40, height: 40, background: 'linear-gradient(135deg, #0d3320, #1a5c35)', border: '2px solid rgba(163,177,138,0.35)' }}>
-            <SmartToyIcon sx={{ color: '#fff', fontSize: 20 }} />
-          </Avatar>
-          <Box sx={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, borderRadius: '50%', bgcolor: '#4CAF50', border: '1.5px solid white', boxShadow: '0 0 6px rgba(76,175,80,0.6)' }} />
-        </Box>
-        <Box flex={1}>
-          <Typography sx={{ fontFamily: '"Satoshi", sans-serif', fontWeight: 800, color: '#0d2818', fontSize: '1rem', lineHeight: 1.1 }}>
-            BuyerBot AI
-          </Typography>
-          <Typography variant="caption" sx={{ color: '#6b8f71', fontSize: '0.68rem', letterSpacing: '0.02em' }}>
-            Amazon Nova · Real-time marketplace data
-          </Typography>
-        </Box>
-        <Chip label="LIVE" size="small" sx={{ bgcolor: 'rgba(76,175,80,0.10)', color: '#2e7d32', fontWeight: 700, fontSize: 9, border: '1px solid rgba(76,175,80,0.25)', borderRadius: '6px' }} />
-      </Box>
+      greeting={`Hello ${user?.first_name || 'Buyer'}! 🛒`}
+      description="I'm your AgriConnect BuyerBot AI. I fetch real-time data from the marketplace — product listings, live prices, bid intelligence, and availability — all powered by Amazon Nova AI."
+      capabilities={CAPABILITIES}
+      quickActions={QUICK_ACTIONS}
 
-      {/* Messages */}
-      <Box sx={{
-        position: 'relative', zIndex: 1, flex: 1, overflowY: 'auto', px: 2.5, py: 2,
-        display: 'flex', flexDirection: 'column', gap: 2,
-        '&::-webkit-scrollbar': { width: 4 },
-        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(18,53,36,0.15)', borderRadius: 4 },
-      }}>
-        {messages.map((msg, i) => (
-          <Fade in key={i} timeout={300}>
-            <Box display="flex" justifyContent={msg.role === 'user' ? 'flex-end' : 'flex-start'} gap={1} alignItems="flex-end">
-              {msg.role === 'bot' && (
-                <Avatar sx={{ width: 30, height: 30, flexShrink: 0, mb: 0.5, background: 'linear-gradient(135deg, #0d3320, #1a5c35)', border: '1.5px solid rgba(163,177,138,0.3)' }}>
-                  <SmartToyIcon sx={{ fontSize: 15, color: '#fff' }} />
-                </Avatar>
-              )}
-              <Paper elevation={0} sx={{
-                px: 2, py: 1.5, maxWidth: '78%',
-                borderRadius: msg.role === 'user' ? '18px 4px 18px 18px' : '4px 18px 18px 18px',
-                background: msg.role === 'user'
-                  ? 'linear-gradient(135deg, #0d3320 0%, #1a5c35 100%)'
-                  : 'rgba(255,255,255,0.92)',
-                backdropFilter: 'blur(8px)',
-                border: msg.role === 'bot' ? '1px solid rgba(18,53,36,0.09)' : 'none',
-                boxShadow: msg.role === 'user'
-                  ? '0 4px 16px rgba(13,51,32,0.22)'
-                  : '0 2px 12px rgba(18,53,36,0.07)',
-              }}>
-                <ChatText text={msg.text} color={msg.role === 'user' ? 'rgba(255,255,255,0.95)' : '#1a2e1a'} />
-                {msg.role === 'bot' && (
-                  <Typography variant="caption" sx={{ display: 'block', mt: 0.75, opacity: 0.4, fontSize: '0.65rem', color: '#4a6b52' }}>
-                    {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                  </Typography>
-                )}
-              </Paper>
-              {msg.role === 'user' && (
-                <Avatar sx={{ width: 30, height: 30, flexShrink: 0, mb: 0.5, bgcolor: 'rgba(18,53,36,0.08)', border: '1.5px solid rgba(18,53,36,0.12)' }}>
-                  <PersonIcon sx={{ fontSize: 15, color: '#3E5F44' }} />
-                </Avatar>
-              )}
-            </Box>
-          </Fade>
-        ))}
+      Illustration={BuyerBotIllustration}
 
-        {loading && (
-          <Fade in timeout={200}>
-            <Box display="flex" gap={1} alignItems="flex-end">
-              <Avatar sx={{ width: 30, height: 30, flexShrink: 0, mb: 0.5, background: 'linear-gradient(135deg, #0d3320, #1a5c35)' }}>
-                <SmartToyIcon sx={{ fontSize: 15, color: '#fff' }} />
-              </Avatar>
-              <Paper elevation={0} sx={{ px: 2, py: 1.5, borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', border: '1px solid rgba(18,53,36,0.09)', boxShadow: '0 2px 12px rgba(18,53,36,0.07)' }}>
-                <TypingDots />
-              </Paper>
-            </Box>
-          </Fade>
-        )}
-        <div ref={bottomRef} />
-      </Box>
-
-      {/* Suggestions */}
-      {showSuggestions && messages.length === 1 && (
-        <Box sx={{ position: 'relative', zIndex: 2, px: 2.5, pb: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {SUGGESTIONS.map((s, i) => (
-            <Chip key={i} icon={s.icon} label={s.text} size="small" onClick={() => send(s.text)}
-              sx={{ cursor: 'pointer', fontWeight: 500, fontSize: '0.72rem', borderRadius: '8px', bgcolor: 'rgba(18,53,36,0.06)', color: '#1a3d25', border: '1px solid rgba(18,53,36,0.12)', '& .MuiChip-icon': { color: '#3E5F44' }, '&:hover': { bgcolor: 'rgba(18,53,36,0.11)' } }} />
-          ))}
-        </Box>
-      )}
-
-      {/* Input */}
-      <Box sx={{
-        position: 'relative', zIndex: 2, px: 2, py: 1.5,
-        background: 'rgba(255,255,255,0.97)',
-        borderTop: '1px solid rgba(18,53,36,0.08)',
-        display: 'flex', gap: 1, alignItems: 'flex-end',
-        backdropFilter: 'blur(12px)',
-      }}>
-        <TextField fullWidth multiline maxRows={4} variant="outlined"
-          placeholder="Ask about prices, availability, or bid strategy…"
-          value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-          disabled={loading}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: '12px', fontSize: '0.875rem', color: '#1a2e1a',
-              bgcolor: '#f4f6f2',
-              '& fieldset': { borderColor: 'rgba(18,53,36,0.15)' },
-              '&:hover fieldset': { borderColor: 'rgba(18,53,36,0.30)' },
-              '&.Mui-focused fieldset': { borderColor: '#3E5F44' },
-            },
-            '& textarea::placeholder': { color: 'rgba(18,53,36,0.35)' },
-          }}
-        />
-        <IconButton onClick={() => send()} disabled={!input.trim() || loading}
-          sx={{
-            width: 44, height: 44, flexShrink: 0, borderRadius: '12px',
-            background: input.trim() && !loading ? 'linear-gradient(135deg, #0d3320, #1a5c35)' : 'rgba(18,53,36,0.07)',
-            color: input.trim() && !loading ? 'white' : 'rgba(18,53,36,0.25)',
-            transition: 'all 0.2s',
-            '&:hover': { background: 'linear-gradient(135deg, #123524, #2d6a47)' },
-            '&:disabled': { background: 'rgba(18,53,36,0.05)' },
-          }}>
-          {loading ? <CircularProgress size={18} sx={{ color: '#3E5F44' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
-        </IconButton>
-      </Box>
-    </Box>
+      onSend={onSend}
+      user={user}
+    />
   );
 }
