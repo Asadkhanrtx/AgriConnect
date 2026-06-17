@@ -52,8 +52,9 @@ resource "aws_instance" "frontend" {
   associate_public_ip_address = true
 
   user_data = base64encode(templatefile("${path.module}/templates/frontend-userdata.sh.tpl", {
-    github_repo_url = var.github_repo_url
-    farmbot_api_url = var.farmbot_api_url
+    github_repo_url  = var.github_repo_url
+    farmbot_api_url  = var.farmbot_api_url
+    buyerbot_api_url = var.buyerbot_api_url
   }))
 
   tags = { Name = "${var.name_prefix}-frontend" }

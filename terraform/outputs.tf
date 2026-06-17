@@ -88,6 +88,12 @@ output "farmbot_critical_sns_arn" {
   value       = aws_sns_topic.farmbot_critical.arn
 }
 
+# ── BuyerBot ──────────────────────────────────────────────────────────────────
+output "buyerbot_api_url" {
+  description = "BuyerBot chatbot POST endpoint — set this as VITE_BUYERBOT_API_URL in your frontend build"
+  value       = "${trimsuffix(aws_apigatewayv2_stage.buyerbot.invoke_url, "/")}/chat"
+}
+
 # ── SSH helpers ───────────────────────────────────────────────────────────────
 output "ssh_bastion" {
   value = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${module.ec2.bastion_public_ip}"

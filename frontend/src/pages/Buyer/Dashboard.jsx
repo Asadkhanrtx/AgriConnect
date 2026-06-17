@@ -20,7 +20,9 @@ import AgricultureIcon from '@mui/icons-material/Agriculture';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PaymentIcon from '@mui/icons-material/Payment';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import axios from 'axios';
+import BuyerBot from './BuyerBot';
 
 const STATUS_COLORS = { PENDING: 'warning', IN_TRANSIT: 'info', DELIVERED: 'success' };
 const BID_COLORS    = { PENDING: 'warning', ACCEPTED: 'success', REJECTED: 'error' };
@@ -348,6 +350,7 @@ const BuyerDashboard = ({ user }) => {
             label="My Orders" iconPosition="start"
           />
           <Tab icon={<GavelIcon fontSize="small" />} label={`My Bids (${bids.length})`} iconPosition="start" />
+          <Tab icon={<SmartToyIcon fontSize="small" />} label="BuyerBot AI" iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -587,6 +590,9 @@ const BuyerDashboard = ({ user }) => {
           )}
         </Card>
       )}
+
+      {/* ── BuyerBot ─────────────────────────────────────────────────────────── */}
+      {tab === 3 && <BuyerBot user={user} />}
 
       {/* ── Buy Dialog ───────────────────────────────────────────────────────── */}
       <Dialog open={buyDialog} onClose={() => setBuyDialog(false)} maxWidth="xs" fullWidth

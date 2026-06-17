@@ -16,6 +16,7 @@ chown -R ubuntu:ubuntu /home/ubuntu/AgriConnect
 # ── 3. Write FarmBot env for Vite build ──────────────────────
 cat > /home/ubuntu/AgriConnect/frontend/.env.production <<ENVCONF
 VITE_FARMBOT_API_URL=${farmbot_api_url}
+VITE_BUYERBOT_API_URL=${buyerbot_api_url}
 ENVCONF
 chown ubuntu:ubuntu /home/ubuntu/AgriConnect/frontend/.env.production
 

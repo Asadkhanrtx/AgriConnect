@@ -33,6 +33,12 @@ variable "farmbot_api_url" {
   default     = ""
 }
 
+variable "buyerbot_api_url" {
+  type        = string
+  description = "BuyerBot API Gateway URL injected into frontend .env.production"
+  default     = ""
+}
+
 variable "bastion_instance_type" {
   type    = string
   default = "t2.micro"
