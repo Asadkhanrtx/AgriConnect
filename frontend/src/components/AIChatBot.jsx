@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import SendIcon from '@mui/icons-material/Send';
-import EcoIcon from '@mui/icons-material/Eco';
+import GrassIcon from '@mui/icons-material/Grass';
 import PersonIcon from '@mui/icons-material/Person';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 
@@ -251,7 +251,7 @@ export default function AIChatBot({
               {botName}
             </Typography>
             <Box display="flex" alignItems="center" gap={0.6} mt={0.3}>
-              <EcoIcon sx={{ fontSize: 13, color: C.primary }} />
+              <GrassIcon sx={{ fontSize: 13, color: C.primary }} />
               <Typography sx={{ fontFamily: 'Inter, sans-serif', fontSize: '0.78rem', color: C.muted, fontWeight: 500 }}>
                 {subtitle}
               </Typography>
