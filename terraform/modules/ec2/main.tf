@@ -31,7 +31,11 @@ resource "aws_instance" "backend" {
   iam_instance_profile   = var.ec2_instance_profile_name
 
   user_data = base64encode(templatefile("${path.module}/templates/backend-userdata.sh.tpl", {
-    github_repo_url = var.github_repo_url
+    github_repo_url         = var.github_repo_url
+    aws_region              = var.aws_region
+    sns_topic_arn           = var.sns_topic_arn
+    events_topic_arn        = var.events_topic_arn
+    notifications_queue_url = var.notifications_queue_url
   }))
 
   tags = { Name = "${var.name_prefix}-backend" }
@@ -49,6 +53,7 @@ resource "aws_instance" "frontend" {
 
   user_data = base64encode(templatefile("${path.module}/templates/frontend-userdata.sh.tpl", {
     github_repo_url = var.github_repo_url
+    farmbot_api_url = var.farmbot_api_url
   }))
 
   tags = { Name = "${var.name_prefix}-frontend" }

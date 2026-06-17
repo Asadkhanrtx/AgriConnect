@@ -124,6 +124,13 @@ variable "jwt_expiry" {
   default     = "24h"
 }
 
+# ── Notifications ─────────────────────────────────────────────────────────────
+variable "admin_email" {
+  description = "Email address to receive SNS alerts (weather alerts + FarmBot critical). A confirmation email will be sent automatically on terraform apply."
+  type        = string
+  default     = ""
+}
+
 # ── Lambda / EventBridge ──────────────────────────────────────────────────────
 variable "weather_schedule_expression" {
   description = "EventBridge Scheduler rate expression for weather checks"

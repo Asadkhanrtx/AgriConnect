@@ -60,6 +60,12 @@ module "ec2" {
   frontend_instance_type    = local.config.frontend_instance_type
   github_repo_url           = var.github_repo_url
   aws_region                = var.aws_region
+
+  # Auto-injected into user data — no manual SSH + prompts needed
+  sns_topic_arn           = aws_sns_topic.weather_alerts.arn
+  events_topic_arn        = aws_sns_topic.events.arn
+  notifications_queue_url = aws_sqs_queue.notifications.url
+  farmbot_api_url         = "${aws_apigatewayv2_stage.farmbot.invoke_url}/chat"
 }
 
 module "alb" {
@@ -203,6 +209,23 @@ resource "aws_sns_topic_subscription" "events_to_sqs" {
   topic_arn = aws_sns_topic.events.arn
   protocol  = "sqs"
   endpoint  = aws_sqs_queue.notifications.arn
+}
+
+# ── SNS Email Subscriptions (auto-sent on terraform apply) ───────────────────
+# User still has to click the confirmation link in the email — AWS requires it.
+
+resource "aws_sns_topic_subscription" "admin_weather_alerts" {
+  count     = var.admin_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.weather_alerts.arn
+  protocol  = "email"
+  endpoint  = var.admin_email
+}
+
+resource "aws_sns_topic_subscription" "admin_farmbot_critical" {
+  count     = var.admin_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.farmbot_critical.arn
+  protocol  = "email"
+  endpoint  = var.admin_email
 }
 
 # ── Lambda Function ───────────────────────────────────────────────────────────
