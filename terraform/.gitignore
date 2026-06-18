@@ -7,8 +7,7 @@
 *.tfplan
 *.plan
 
-# Variables files — contain secrets
-terraform.tfvars
+# Variables files
 *.auto.tfvars
 override.tf
 override.tf.json
