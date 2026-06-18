@@ -30,19 +30,7 @@ variable "availability_zones" {
   default = ["ap-south-1a", "ap-south-1b"]
 }
 
-# ── EC2 ───────────────────────────────────────────────────────────────────────
-variable "ami_id" {
-  description = "Ubuntu 24.04 LTS AMI for ap-south-1"
-  type        = string
-  default     = "ami-0388e3ada3d9812da"
-}
-
-variable "key_pair_name" {
-  type = string
-}
-
 # ── RDS ───────────────────────────────────────────────────────────────────────
-
 variable "rds_db_name" {
   type    = string
   default = "agriconnect"
@@ -70,12 +58,11 @@ variable "s3_delivery_proofs_bucket" {
 
 # ── FarmBot ───────────────────────────────────────────────────────────────────
 variable "farmbot_logs_bucket" {
-  type        = string
-  description = "S3 bucket name for FarmBot chat logs and uploaded photos"
-  default     = "agriconnect-farmbot-logs"
+  type    = string
+  default = "agriconnect-farmbot-logs"
 }
 
-# ── SMTP (stored in Secrets Manager / used by notification emails) ─────────────
+# ── SMTP ──────────────────────────────────────────────────────────────────────
 variable "smtp_host" {
   type    = string
   default = "smtp.gmail.com"
@@ -87,62 +74,48 @@ variable "smtp_port" {
 }
 
 variable "smtp_user" {
-  description = "Gmail address used as sender"
-  type        = string
-  default     = ""
-  sensitive   = true
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "smtp_pass" {
-  description = "Gmail App Password (16-char from Google Account → Security → App Passwords)"
-  type        = string
-  default     = ""
-  sensitive   = true
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "smtp_from" {
-  description = "Display name + address shown as sender, e.g. AgriConnect <you@gmail.com>"
-  type        = string
-  default     = ""
-}
-
-# ── Application ───────────────────────────────────────────────────────────────
-variable "github_repo_url" {
   type    = string
-  default = "https://github.com/Asadkhanrtx/AgriConnect.git"
+  default = ""
 }
 
+# ── JWT ───────────────────────────────────────────────────────────────────────
 variable "jwt_secret" {
-  description = "JWT signing secret (hex string)"
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 variable "jwt_expiry" {
-  description = "JWT token expiry duration"
-  type        = string
-  default     = "24h"
+  type    = string
+  default = "24h"
 }
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 variable "admin_email" {
-  description = "Email address to receive SNS alerts (weather alerts + FarmBot critical). A confirmation email will be sent automatically on terraform apply."
-  type        = string
-  default     = ""
+  type    = string
+  default = ""
 }
 
-# ── Lambda / EventBridge ──────────────────────────────────────────────────────
 variable "weather_schedule_expression" {
-  description = "EventBridge Scheduler rate expression for weather checks"
-  type        = string
-  default     = "rate(6 hours)"
+  type    = string
+  default = "rate(6 hours)"
 }
 
 # ── EKS ───────────────────────────────────────────────────────────────────────
 variable "eks_node_instance_type" {
-  description = "EC2 instance type for EKS nodes"
-  type        = string
-  default     = "t3.medium"
+  type    = string
+  default = "t3.medium"
 }
 
 variable "eks_node_desired_size" {
@@ -158,4 +131,10 @@ variable "eks_node_min_size" {
 variable "eks_node_max_size" {
   type    = number
   default = 4
+}
+
+variable "eks_alb_dns_name" {
+  description = "DNS name of the ALB created by the EKS AWS Load Balancer Controller (set after first bootstrap)"
+  type        = string
+  default     = ""
 }

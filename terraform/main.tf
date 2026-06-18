@@ -1,11 +1,8 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  AgriConnect — Root Terraform Configuration                                ║
-# ║  Creates ALL cloud infrastructure from scratch. No import blocks.          ║
+# ║  AgriConnect — Root Terraform Configuration (EKS)                          ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
-# (JWT secret provided via var.jwt_secret in terraform.tfvars)
-
-# ── Lambda package (index.js only — @aws-sdk/client-sns bundled in Node 18+) ──
+# ── Lambda package (weather alert) ───────────────────────────────────────────
 data "archive_file" "lambda" {
   type        = "zip"
   source_file = "${path.module}/../lambda/weather-alert-processor/index.js"
@@ -46,51 +43,29 @@ module "s3" {
   delivery_proofs_bucket = var.s3_delivery_proofs_bucket
 }
 
-module "ec2" {
-  source                    = "./modules/ec2"
-  name_prefix               = local.name_prefix
-  ami_id                    = var.ami_id
-  key_pair_name             = var.key_pair_name
-  common_sg_id              = module.security.common_sg_id
-  ec2_instance_profile_name = module.security.ec2_instance_profile_name
-  public_subnet_ids         = module.networking.public_subnet_ids
-  private_subnet_ids        = module.networking.private_subnet_ids
-  bastion_instance_type     = local.config.bastion_instance_type
-  backend_instance_type     = local.config.backend_instance_type
-  frontend_instance_type    = local.config.frontend_instance_type
-  github_repo_url           = var.github_repo_url
-  aws_region                = var.aws_region
-
-  # Auto-injected into user data — no manual SSH + prompts needed
-  sns_topic_arn           = aws_sns_topic.weather_alerts.arn
-  events_topic_arn        = aws_sns_topic.events.arn
-  notifications_queue_url = aws_sqs_queue.notifications.url
-  farmbot_api_url         = "${trimsuffix(aws_apigatewayv2_stage.farmbot.invoke_url, "/")}/chat"
-  buyerbot_api_url        = "${trimsuffix(aws_apigatewayv2_stage.buyerbot.invoke_url, "/")}/chat"
-}
-
-module "alb" {
-  source               = "./modules/alb"
-  name_prefix          = local.name_prefix
-  vpc_id               = module.networking.vpc_id
-  common_sg_id         = module.security.common_sg_id
-  public_subnet_ids    = module.networking.public_subnet_ids
-  backend_instance_id  = module.ec2.backend_instance_id
-  frontend_instance_id = module.ec2.frontend_instance_id
-}
-
-# ── EKS ───────────────────────────────────────────────────────────────────────
 module "eks" {
-  source              = "./modules/eks"
-  name_prefix         = local.name_prefix
-  vpc_id              = module.networking.vpc_id
-  public_subnet_ids   = module.networking.public_subnet_ids
-  private_subnet_ids  = module.networking.private_subnet_ids
-  node_instance_type  = var.eks_node_instance_type
-  node_desired_size   = var.eks_node_desired_size
-  node_min_size       = var.eks_node_min_size
-  node_max_size       = var.eks_node_max_size
+  source                = "./modules/eks"
+  name_prefix           = local.name_prefix
+  vpc_id                = module.networking.vpc_id
+  public_subnet_ids     = module.networking.public_subnet_ids
+  private_subnet_ids    = module.networking.private_subnet_ids
+  node_instance_type    = var.eks_node_instance_type
+  node_desired_size     = var.eks_node_desired_size
+  node_min_size         = var.eks_node_min_size
+  node_max_size         = var.eks_node_max_size
   rds_security_group_id = module.security.common_sg_id
+}
+
+module "cloudfront" {
+  source = "./modules/cloudfront"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  alb_dns_name = var.eks_alb_dns_name
+  tags         = local.common_tags
 }
 
 # ── Secrets Manager ───────────────────────────────────────────────────────────
@@ -128,15 +103,15 @@ resource "aws_secretsmanager_secret_version" "jwt" {
 
 resource "aws_secretsmanager_secret" "aws_creds" {
   name                    = "agriconnect/${local.workspace_env}/aws"
-  description             = "AWS credentials (USE_IAM_ROLE = use instance profile)"
+  description             = "AWS credentials — pods use IRSA, no keys needed"
   recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "aws_creds" {
   secret_id = aws_secretsmanager_secret.aws_creds.id
   secret_string = jsonencode({
-    access_key = "USE_IAM_ROLE"
-    secret_key = "USE_IAM_ROLE"
+    access_key = "USE_IRSA"
+    secret_key = "USE_IRSA"
     region     = var.aws_region
   })
 }
@@ -187,13 +162,13 @@ resource "aws_sns_topic" "events" {
 
 resource "aws_sqs_queue" "notifications_dlq" {
   name                      = "AgriConnect-Notifications-DLQ"
-  message_retention_seconds = 1209600 # 14 days
+  message_retention_seconds = 1209600
 }
 
 resource "aws_sqs_queue" "notifications" {
   name                       = "AgriConnect-Notifications-Queue"
   visibility_timeout_seconds = 30
-  message_retention_seconds  = 86400 # 1 day
+  message_retention_seconds  = 86400
   receive_wait_time_seconds  = 20
 
   redrive_policy = jsonencode({
@@ -226,9 +201,6 @@ resource "aws_sns_topic_subscription" "events_to_sqs" {
   endpoint  = aws_sqs_queue.notifications.arn
 }
 
-# ── SNS Email Subscriptions (auto-sent on terraform apply) ───────────────────
-# User still has to click the confirmation link in the email — AWS requires it.
-
 resource "aws_sns_topic_subscription" "admin_weather_alerts" {
   count     = var.admin_email != "" ? 1 : 0
   topic_arn = aws_sns_topic.weather_alerts.arn
@@ -243,7 +215,7 @@ resource "aws_sns_topic_subscription" "admin_farmbot_critical" {
   endpoint  = var.admin_email
 }
 
-# ── Lambda Function ───────────────────────────────────────────────────────────
+# ── Weather Alert Lambda ───────────────────────────────────────────────────────
 
 resource "aws_lambda_function" "weather_alert" {
   function_name    = "weather-alert-processor"
@@ -267,25 +239,30 @@ resource "aws_lambda_permission" "scheduler_invoke" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.weather_alert.function_name
   principal     = "scheduler.amazonaws.com"
-  # Constructed directly to avoid circular dependency with aws_scheduler_schedule
   source_arn    = "arn:aws:scheduler:${var.aws_region}:${local.account_id}:schedule/default/agriconnect-weather-check"
 }
 
-# ── CloudFront + WAF ──────────────────────────────────────────────────────────
+# ── EventBridge Scheduler ─────────────────────────────────────────────────────
 
-module "cloudfront" {
-  source = "./modules/cloudfront"
+resource "aws_scheduler_schedule" "weather_check" {
+  name       = "agriconnect-weather-check"
+  group_name = "default"
+  state      = "ENABLED"
 
-  providers = {
-    aws           = aws
-    aws.us_east_1 = aws.us_east_1
+  flexible_time_window { mode = "OFF" }
+
+  schedule_expression          = var.weather_schedule_expression
+  schedule_expression_timezone = "Asia/Kolkata"
+
+  target {
+    arn      = aws_lambda_function.weather_alert.arn
+    role_arn = module.security.scheduler_role_arn
   }
 
-  alb_dns_name = module.alb.alb_dns_name
-  tags         = local.common_tags
+  depends_on = [aws_lambda_permission.scheduler_invoke]
 }
 
-# ── FarmBot Chatbot (Lambda + API Gateway HTTP API) ──────────────────────────
+# ── FarmBot Lambda + API Gateway ──────────────────────────────────────────────
 
 data "archive_file" "farmbot" {
   type        = "zip"
@@ -314,11 +291,7 @@ resource "aws_iam_role" "farmbot_lambda" {
   name = "${local.name_prefix}-farmbot-lambda-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
+    Statement = [{ Action = "sts:AssumeRole", Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" } }]
   })
 }
 
@@ -328,26 +301,10 @@ resource "aws_iam_role_policy" "farmbot_lambda" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
-        Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject"]
-        Resource = "${aws_s3_bucket.farmbot_logs.arn}/*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["sns:Publish"]
-        Resource = aws_sns_topic.farmbot_critical.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
-      }
+      { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0" },
+      { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = "${aws_s3_bucket.farmbot_logs.arn}/*" },
+      { Effect = "Allow", Action = ["sns:Publish"], Resource = aws_sns_topic.farmbot_critical.arn },
+      { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "arn:aws:logs:*:*:*" }
     ]
   })
 }
@@ -375,7 +332,6 @@ resource "aws_lambda_function" "farmbot" {
 resource "aws_apigatewayv2_api" "farmbot" {
   name          = "farmbot-api"
   protocol_type = "HTTP"
-
   cors_configuration {
     allow_origins = ["*"]
     allow_methods = ["POST", "OPTIONS"]
@@ -411,7 +367,7 @@ resource "aws_lambda_permission" "farmbot_api_gw" {
   source_arn    = "${aws_apigatewayv2_api.farmbot.execution_arn}/*/*"
 }
 
-# ── BuyerBot Chatbot (Lambda + API Gateway HTTP API) ─────────────────────────
+# ── BuyerBot Lambda + API Gateway ─────────────────────────────────────────────
 
 data "archive_file" "buyerbot" {
   type        = "zip"
@@ -423,11 +379,7 @@ resource "aws_iam_role" "buyerbot_lambda" {
   name = "${local.name_prefix}-buyerbot-lambda-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
+    Statement = [{ Action = "sts:AssumeRole", Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" } }]
   })
 }
 
@@ -437,16 +389,8 @@ resource "aws_iam_role_policy" "buyerbot_lambda" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel", "bedrock:Converse"]
-        Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
-      }
+      { Effect = "Allow", Action = ["bedrock:InvokeModel", "bedrock:Converse"], Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0" },
+      { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "arn:aws:logs:*:*:*" }
     ]
   })
 }
@@ -464,7 +408,7 @@ resource "aws_lambda_function" "buyerbot" {
     variables = {
       BEDROCK_REGION = "us-east-1"
       MODEL_ID       = "amazon.nova-lite-v1:0"
-      ALB_URL        = module.alb.alb_dns_name
+      ALB_URL        = var.eks_alb_dns_name
     }
   }
 }
@@ -472,7 +416,6 @@ resource "aws_lambda_function" "buyerbot" {
 resource "aws_apigatewayv2_api" "buyerbot" {
   name          = "buyerbot-api"
   protocol_type = "HTTP"
-
   cors_configuration {
     allow_origins = ["*"]
     allow_methods = ["POST", "OPTIONS"]
@@ -506,27 +449,4 @@ resource "aws_lambda_permission" "buyerbot_api_gw" {
   function_name = aws_lambda_function.buyerbot.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.buyerbot.execution_arn}/*/*"
-}
-
-# ── EventBridge Scheduler ─────────────────────────────────────────────────────
-
-resource "aws_scheduler_schedule" "weather_check" {
-  name       = "agriconnect-weather-check"
-  group_name = "default"
-  state      = "ENABLED"
-
-  flexible_time_window {
-    mode = "OFF"
-  }
-
-  schedule_expression          = var.weather_schedule_expression
-  schedule_expression_timezone = "Asia/Kolkata"
-
-  target {
-    arn      = aws_lambda_function.weather_alert.arn
-    role_arn = module.security.scheduler_role_arn
-  }
-
-  # Lambda permission uses a constructed ARN (no implicit dep), so force ordering.
-  depends_on = [aws_lambda_permission.scheduler_invoke]
 }
