@@ -6,7 +6,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   SERVICE: media
-  CONTEXT: services/media-service
+  CONTEXT: .
   DOCKERFILE: services/media-service/Dockerfile
   ECR_REPO: agriconnect-media
 

@@ -6,7 +6,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   SERVICE: notification
-  CONTEXT: services/notification-service
+  CONTEXT: .
   DOCKERFILE: services/notification-service/Dockerfile
   ECR_REPO: agriconnect-notification
 

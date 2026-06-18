@@ -6,7 +6,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   SERVICE: auth
-  CONTEXT: services/auth-service
+  CONTEXT: .
   DOCKERFILE: services/auth-service/Dockerfile
   ECR_REPO: agriconnect-auth
 

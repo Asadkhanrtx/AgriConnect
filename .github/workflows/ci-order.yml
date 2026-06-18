@@ -6,7 +6,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   SERVICE: order
-  CONTEXT: services/order-service
+  CONTEXT: .
   DOCKERFILE: services/order-service/Dockerfile
   ECR_REPO: agriconnect-order
 

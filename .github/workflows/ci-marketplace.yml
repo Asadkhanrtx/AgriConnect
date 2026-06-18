@@ -6,7 +6,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   SERVICE: marketplace
-  CONTEXT: services/marketplace-service
+  CONTEXT: .
   DOCKERFILE: services/marketplace-service/Dockerfile
   ECR_REPO: agriconnect-marketplace
 
