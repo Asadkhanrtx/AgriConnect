@@ -56,6 +56,44 @@ module "eks" {
   rds_security_group_id = module.security.common_sg_id
 }
 
+# ── Frontend S3 Bucket ────────────────────────────────────────────────────────
+
+resource "aws_s3_bucket" "frontend" {
+  bucket        = "agriconnect-frontend-${local.account_id}"
+  force_destroy = true
+  tags          = local.common_tags
+}
+
+resource "aws_s3_bucket_website_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+  index_document { suffix = "index.html" }
+  error_document { key    = "index.html" }
+}
+
+resource "aws_s3_bucket_public_access_block" "frontend" {
+  bucket                  = aws_s3_bucket.frontend.id
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "frontend" {
+  bucket     = aws_s3_bucket.frontend.id
+  depends_on = [aws_s3_bucket_public_access_block.frontend]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "PublicRead"
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = "s3:GetObject"
+      Resource  = "${aws_s3_bucket.frontend.arn}/*"
+    }]
+  })
+}
+
 module "cloudfront" {
   source = "./modules/cloudfront"
 
@@ -64,8 +102,9 @@ module "cloudfront" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  alb_dns_name = var.eks_alb_dns_name
-  tags         = local.common_tags
+  alb_dns_name        = var.eks_alb_dns_name
+  s3_website_endpoint = aws_s3_bucket_website_configuration.frontend.website_endpoint
+  tags                = local.common_tags
 }
 
 # ── Secrets Manager ───────────────────────────────────────────────────────────

@@ -4,6 +4,11 @@ output "cloudfront_url" {
   value       = module.cloudfront.cloudfront_url
 }
 
+output "frontend_bucket" {
+  description = "S3 bucket for frontend static files"
+  value       = aws_s3_bucket.frontend.bucket
+}
+
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID (for cache invalidation)"
   value       = module.cloudfront.distribution_id

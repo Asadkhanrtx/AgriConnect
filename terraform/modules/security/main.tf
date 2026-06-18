@@ -1,7 +1,7 @@
 # ── RDS / Common Security Group ───────────────────────────────────────────────
 resource "aws_security_group" "common" {
   name        = "AgriConnect-Common-SG"
-  description = "Common SG — allows RDS access from EKS nodes and internal traffic"
+  description = "Common SG for all AgriConnect EC2 instances"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -19,7 +19,7 @@ resource "aws_security_group" "common" {
     cidr_blocks = ["0.0.0.0/0"]
   }
   ingress {
-    description = "MySQL — EKS nodes added by eks module security group rule"
+    description = "MySQL - EKS nodes added by eks module security group rule"
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"

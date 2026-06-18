@@ -1,4 +1,4 @@
-name: CI — Build, Scan & Push
+name: CI - Build, Scan & Push
 
 on:
   push:
@@ -92,3 +92,50 @@ jobs:
             ${{ steps.tag.outputs.full_image }}
             ${{ steps.login-ecr.outputs.registry }}/${{ matrix.repo }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
+
+  deploy-frontend:
+    name: Build & Deploy Frontend to S3
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: frontend
+
+      - name: Build frontend
+        env:
+          VITE_BUYERBOT_API_URL: https://ugtdorb2be.execute-api.ap-south-1.amazonaws.com/chat
+          VITE_FARMBOT_API_URL: https://oqpjllka0d.execute-api.ap-south-1.amazonaws.com/chat
+        run: npm run build
+        working-directory: frontend
+
+      - name: Upload to S3
+        run: |
+          BUCKET="agriconnect-frontend-$(aws sts get-caller-identity --query Account --output text)"
+          aws s3 sync frontend/dist/ s3://$BUCKET/ --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id E292KDRCS52H6T \
+            --paths "/*"

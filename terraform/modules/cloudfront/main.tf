@@ -139,10 +139,23 @@ resource "aws_wafv2_web_acl" "main" {
 resource "aws_cloudfront_distribution" "main" {
   enabled             = true
   is_ipv6_enabled     = true
-  comment             = "AgriConnect — ALB origin with WAF"
+  comment             = "AgriConnect - S3 frontend + ALB API with WAF"
   default_root_object = "index.html"
   price_class         = "PriceClass_All"
   web_acl_id          = aws_wafv2_web_acl.main.arn
+
+  # ── Origin: S3 static frontend ────────────────────────────────────────────────
+  origin {
+    domain_name = var.s3_website_endpoint
+    origin_id   = "s3-frontend"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
 
   # ── Origin: ALB (HTTP only — ALB has no HTTPS cert) ──────────────────────────
   origin {
@@ -162,7 +175,7 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  # ── /api/* — no caching, forward everything ───────────────────────────────────
+  # ── /api/* — no caching, forward everything to ALB ───────────────────────────
   ordered_cache_behavior {
     path_pattern           = "/api/*"
     allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -185,12 +198,12 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl     = 0
   }
 
-  # ── /assets/* — Vite hashed static assets: aggressive caching ────────────────
+  # ── /assets/* — Vite hashed static assets from S3: aggressive caching ────────
   ordered_cache_behavior {
     path_pattern           = "/assets/*"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "alb-origin"
+    target_origin_id       = "s3-frontend"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
@@ -208,26 +221,26 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl     = 31536000
   }
 
-  # ── Default: SPA routes — no caching ─────────────────────────────────────────
+  # ── Default: SPA routes from S3 — short cache ────────────────────────────────
   default_cache_behavior {
-    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "alb-origin"
+    target_origin_id       = "s3-frontend"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
     forwarded_values {
-      query_string = true
-      headers      = ["Host", "Origin", "Authorization"]
+      query_string = false
+      headers      = []
 
       cookies {
-        forward = "all"
+        forward = "none"
       }
     }
 
     min_ttl     = 0
     default_ttl = 0
-    max_ttl     = 0
+    max_ttl     = 300
   }
 
   # ── SPA routing: 404/403 → index.html ────────────────────────────────────────
