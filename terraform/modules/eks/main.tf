@@ -1,4 +1,5 @@
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 # ── Cluster IAM Role ──────────────────────────────────────────────────────────
 resource "aws_iam_role" "cluster" {
@@ -208,6 +209,39 @@ resource "aws_iam_policy" "lb_controller" {
 resource "aws_iam_role_policy_attachment" "lb_controller" {
   policy_arn = aws_iam_policy.lb_controller.arn
   role       = aws_iam_role.lb_controller.name
+}
+
+# ── ECR Repositories ──────────────────────────────────────────────────────────
+resource "aws_ecr_repository" "services" {
+  for_each = toset(["auth", "marketplace", "order", "media", "notification"])
+
+  name                 = "agriconnect-${each.key}"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = { Name = "agriconnect-${each.key}" }
+}
+
+resource "aws_ecr_lifecycle_policy" "services" {
+  for_each   = aws_ecr_repository.services
+  repository = each.value.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
 }
 
 # ── Allow nodes to reach RDS ──────────────────────────────────────────────────

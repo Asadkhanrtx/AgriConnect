@@ -6,7 +6,7 @@ COPY shared/ ./shared/
 COPY services/media-service/package*.json ./services/media-service/
 
 WORKDIR /app/services/media-service
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY services/media-service/ ./
 

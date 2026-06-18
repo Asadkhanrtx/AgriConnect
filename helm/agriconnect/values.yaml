@@ -3,36 +3,37 @@ global:
   dbSecretName: "agriconnect/dev/database"
   eventsTopicArn: "arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"
   notificationsQueueUrl: "https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-Queue"
-  # Set this to the IRSA role ARN output from terraform
+  # Set by bootstrap script from terraform output
   irsaRoleArn: ""
+  ecrRegistry: "978594443309.dkr.ecr.ap-south-1.amazonaws.com"
 
 services:
   auth:
-    image: asadoblivion/agriconnect-auth
+    image: "978594443309.dkr.ecr.ap-south-1.amazonaws.com/agriconnect-auth"
     tag: latest
     port: 3001
     replicas: 2
 
   marketplace:
-    image: asadoblivion/agriconnect-marketplace
+    image: "978594443309.dkr.ecr.ap-south-1.amazonaws.com/agriconnect-marketplace"
     tag: latest
     port: 3002
     replicas: 2
 
   order:
-    image: asadoblivion/agriconnect-order
+    image: "978594443309.dkr.ecr.ap-south-1.amazonaws.com/agriconnect-order"
     tag: latest
     port: 3003
     replicas: 2
 
   media:
-    image: asadoblivion/agriconnect-media
+    image: "978594443309.dkr.ecr.ap-south-1.amazonaws.com/agriconnect-media"
     tag: latest
     port: 3004
     replicas: 2
 
   notification:
-    image: asadoblivion/agriconnect-notification
+    image: "978594443309.dkr.ecr.ap-south-1.amazonaws.com/agriconnect-notification"
     tag: latest
     port: 3005
     replicas: 2
@@ -47,5 +48,5 @@ resources:
 
 ingress:
   enabled: true
-  # ALB DNS will be set automatically — leave empty
+  # ALB DNS will be populated automatically — leave empty
   host: ""

@@ -6,7 +6,7 @@ COPY shared/ ./shared/
 COPY services/notification-service/package*.json ./services/notification-service/
 
 WORKDIR /app/services/notification-service
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY services/notification-service/ ./
 

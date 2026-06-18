@@ -6,7 +6,7 @@ COPY shared/ ./shared/
 COPY services/auth-service/package*.json ./services/auth-service/
 
 WORKDIR /app/services/auth-service
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY services/auth-service/ ./
 

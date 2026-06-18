@@ -6,7 +6,7 @@ COPY shared/ ./shared/
 COPY services/marketplace-service/package*.json ./services/marketplace-service/
 
 WORKDIR /app/services/marketplace-service
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY services/marketplace-service/ ./
 
