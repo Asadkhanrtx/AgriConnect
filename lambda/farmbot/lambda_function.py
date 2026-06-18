@@ -26,6 +26,7 @@ def lambda_handler(event, context):
         farmer_id = str(body.get('farmer_id', 'anonymous'))
         message = (body.get('message') or '').strip()
         image_b64 = body.get('image')  # base64 string from frontend
+        history = body.get('history') or []  # conversation history [{role, text}, ...]
 
         if not message and not image_b64:
             return _cors_response(400, json.dumps({'error': 'Please send a message or upload a photo.'}))
@@ -46,9 +47,9 @@ def lambda_handler(event, context):
             except Exception as e:
                 print(f'Photo store error (non-fatal): {e}')
 
-            payload = build_multimodal_payload(message, image_b64)
+            payload = build_multimodal_payload(message, image_b64, history=history)
         else:
-            payload = build_text_payload(message)
+            payload = build_text_payload(message, history=history)
 
         response_text = _clean(call_nova_lite(payload))
 

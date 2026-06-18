@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SearchIcon from '@mui/icons-material/Search';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
@@ -175,18 +175,25 @@ const QUICK_ACTIONS = [
 
 // ─── BuyerBot Page ────────────────────────────────────────────────────────────
 export default function BuyerBot({ user }) {
-  const token = localStorage.getItem('token');
+  const token      = localStorage.getItem('token');
+  const historyRef = useRef([]);
 
   const onSend = async (message) => {
     const res = await fetch(BUYERBOT_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, token }),
+      body: JSON.stringify({ message, token, history: historyRef.current }),
     });
     const data = await res.json();
-    return {
-      text: data.response || data.error || 'Something went wrong.',
-    };
+    const responseText = data.response || data.error || 'Something went wrong.';
+
+    historyRef.current = [
+      ...historyRef.current,
+      { role: 'user',      text: message },
+      { role: 'assistant', text: responseText },
+    ];
+
+    return { text: responseText };
   };
 
   return (

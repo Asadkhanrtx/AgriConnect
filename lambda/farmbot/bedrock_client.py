@@ -25,20 +25,18 @@ def call_nova_lite(payload):
     return result['output']['message']['content'][0]['text']
 
 
-def build_text_payload(message):
+def build_text_payload(message, history=None):
+    messages = []
+    for h in (history or [])[-20:]:  # keep last 10 exchanges (20 messages)
+        messages.append({"role": h["role"], "content": [{"text": h["text"]}]})
+    messages.append({
+        "role": "user",
+        "content": [{"text": message or "Hello, can you help me with my crops?"}]
+    })
     return {
-        "messages": [
-            {
-                "role": "user",
-                "content": [{"text": message or "Hello, can you help me with my crops?"}]
-            }
-        ],
+        "messages": messages,
         "system": [{"text": SYSTEM_PROMPT}],
-        "inferenceConfig": {
-            "maxTokens": 600,
-            "temperature": 0.2,
-            "topP": 0.9
-        }
+        "inferenceConfig": {"maxTokens": 600, "temperature": 0.2, "topP": 0.9}
     }
 
 
@@ -54,31 +52,20 @@ def _detect_format(image_b64):
     return 'jpeg'
 
 
-def build_multimodal_payload(message, image_b64):
+def build_multimodal_payload(message, image_b64, history=None):
     fmt = _detect_format(image_b64)
+    messages = []
+    for h in (history or [])[-20:]:
+        messages.append({"role": h["role"], "content": [{"text": h["text"]}]})
+    messages.append({
+        "role": "user",
+        "content": [
+            {"image": {"format": fmt, "source": {"bytes": image_b64}}},
+            {"text": message or "What is wrong with this plant? Give diagnosis and treatment."}
+        ]
+    })
     return {
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "image": {
-                            "format": fmt,
-                            "source": {
-                                "bytes": image_b64
-                            }
-                        }
-                    },
-                    {
-                        "text": message or "What is wrong with this plant? Give diagnosis and treatment."
-                    }
-                ]
-            }
-        ],
+        "messages": messages,
         "system": [{"text": SYSTEM_PROMPT}],
-        "inferenceConfig": {
-            "maxTokens": 600,
-            "temperature": 0.2,
-            "topP": 0.9
-        }
+        "inferenceConfig": {"maxTokens": 600, "temperature": 0.2, "topP": 0.9}
     }

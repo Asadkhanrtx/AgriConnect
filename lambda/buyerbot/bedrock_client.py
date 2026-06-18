@@ -113,14 +113,17 @@ def _run_tool(name, inputs, buyer_token=None):
         return {"error": f"Tool '{name}' failed: {str(e)}"}
 
 
-def get_response(message, buyer_token=None):
+def get_response(message, buyer_token=None, history=None):
     bedrock = boto3.client(
         'bedrock-runtime',
         region_name=os.environ.get('BEDROCK_REGION', 'us-east-1')
     )
     model_id = os.environ.get('MODEL_ID', 'amazon.nova-lite-v1:0')
 
-    messages = [{"role": "user", "content": [{"text": message}]}]
+    messages = []
+    for h in (history or [])[-20:]:  # keep last 10 exchanges (20 messages)
+        messages.append({"role": h["role"], "content": [{"text": h["text"]}]})
+    messages.append({"role": "user", "content": [{"text": message}]})
 
     for _ in range(6):
         response = bedrock.converse(

@@ -156,8 +156,9 @@ const QUICK_ACTIONS = [
 export default function FarmBot({ user }) {
   const [imageFile,    setImageFile]    = useState(null);
   const [imagePreview, setImagePreview] = useState('');
-  const fileRef = useRef(null);
-  const token   = localStorage.getItem('token');
+  const fileRef    = useRef(null);
+  const historyRef = useRef([]);
+  const token      = localStorage.getItem('token');
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -186,6 +187,7 @@ export default function FarmBot({ user }) {
       farmer_id: user?.id || 'unknown',
       message:   message,
       image:     image_b64,
+      history:   historyRef.current,
     }, {
       headers: {
         Authorization:  `Bearer ${token}`,
@@ -193,8 +195,17 @@ export default function FarmBot({ user }) {
       },
     });
 
+    const responseText = data.response || data.error || 'No response received.';
+
+    // append this exchange to history
+    historyRef.current = [
+      ...historyRef.current,
+      { role: 'user',      text: message },
+      { role: 'assistant', text: responseText },
+    ];
+
     return {
-      text: data.response || data.error || 'No response received.',
+      text: responseText,
       meta: { critical: data.critical },
     };
   };

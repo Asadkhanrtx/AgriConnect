@@ -29,13 +29,14 @@ def lambda_handler(event, context):
         body = json.loads(event.get("body") or "{}")
         message = (body.get("message") or "").strip()
         buyer_token = body.get("token")
+        history = body.get("history") or []
 
         if not message:
             return _cors(400, {"error": "message is required"})
         if len(message) > 1000:
             return _cors(400, {"error": "Message too long (max 1000 characters)"})
 
-        text = _clean(get_response(message, buyer_token=buyer_token))
+        text = _clean(get_response(message, buyer_token=buyer_token, history=history))
         return _cors(200, {"response": text})
 
     except Exception as e:
