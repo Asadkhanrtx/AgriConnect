@@ -79,6 +79,20 @@ module "alb" {
   frontend_instance_id = module.ec2.frontend_instance_id
 }
 
+# ── EKS ───────────────────────────────────────────────────────────────────────
+module "eks" {
+  source              = "./modules/eks"
+  name_prefix         = local.name_prefix
+  vpc_id              = module.networking.vpc_id
+  public_subnet_ids   = module.networking.public_subnet_ids
+  private_subnet_ids  = module.networking.private_subnet_ids
+  node_instance_type  = var.eks_node_instance_type
+  node_desired_size   = var.eks_node_desired_size
+  node_min_size       = var.eks_node_min_size
+  node_max_size       = var.eks_node_max_size
+  rds_security_group_id = module.security.common_sg_id
+}
+
 # ── Secrets Manager ───────────────────────────────────────────────────────────
 
 resource "aws_secretsmanager_secret" "database" {

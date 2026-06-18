@@ -106,3 +106,24 @@ output "ssh_backend" {
 output "ssh_frontend" {
   value = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${module.ec2.frontend_public_ip}"
 }
+
+# ── EKS ───────────────────────────────────────────────────────────────────────
+output "eks_cluster_name" {
+  value = module.eks.cluster_name
+}
+
+output "eks_cluster_endpoint" {
+  value = module.eks.cluster_endpoint
+}
+
+output "eks_services_irsa_role_arn" {
+  value = module.eks.services_irsa_role_arn
+}
+
+output "eks_lb_controller_role_arn" {
+  value = module.eks.lb_controller_role_arn
+}
+
+output "eks_kubeconfig_command" {
+  value = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.aws_region}"
+}

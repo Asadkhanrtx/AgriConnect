@@ -137,3 +137,25 @@ variable "weather_schedule_expression" {
   type        = string
   default     = "rate(6 hours)"
 }
+
+# ── EKS ───────────────────────────────────────────────────────────────────────
+variable "eks_node_instance_type" {
+  description = "EC2 instance type for EKS nodes"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "eks_node_desired_size" {
+  type    = number
+  default = 2
+}
+
+variable "eks_node_min_size" {
+  type    = number
+  default = 2
+}
+
+variable "eks_node_max_size" {
+  type    = number
+  default = 4
+}
