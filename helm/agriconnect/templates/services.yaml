@@ -1,9 +1,0 @@
-{{ include "agriconnect.service" (dict "name" "auth" "port" .Values.services.auth.port) }}
----
-{{ include "agriconnect.service" (dict "name" "marketplace" "port" .Values.services.marketplace.port) }}
----
-{{ include "agriconnect.service" (dict "name" "order" "port" .Values.services.order.port) }}
----
-{{ include "agriconnect.service" (dict "name" "media" "port" .Values.services.media.port) }}
----
-{{ include "agriconnect.service" (dict "name" "notification" "port" .Values.services.notification.port) }}

@@ -1,9 +1,0 @@
-{{ include "agriconnect.deployment" (dict "name" "auth" "svc" .Values.services.auth "Values" .Values) }}
----
-{{ include "agriconnect.deployment" (dict "name" "marketplace" "svc" .Values.services.marketplace "Values" .Values) }}
----
-{{ include "agriconnect.deployment" (dict "name" "order" "svc" .Values.services.order "Values" .Values) }}
----
-{{ include "agriconnect.deployment" (dict "name" "media" "svc" .Values.services.media "Values" .Values) }}
----
-{{ include "agriconnect.deployment" (dict "name" "notification" "svc" .Values.services.notification "Values" .Values) }}
