@@ -1,0 +1,50 @@
+name: CD - Deploy Backend to EKS
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-south-1
+  CLUSTER_NAME: agriconnect-dev-eks
+
+jobs:
+  deploy:
+    name: Helm Upgrade
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Show planned image tags
+        run: |
+          echo "Deploying with the following image tags:"
+          grep -A1 "tag:" helm/agriconnect/values.yaml | grep -v "tag:"
+
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install agriconnect ./helm/agriconnect \
+            --namespace default \
+            --wait \
+            --atomic \
+            --timeout 10m
+
+      - name: Verify deployments
+        run: |
+          kubectl rollout status deployment/auth-service -n default --timeout=5m
+          kubectl rollout status deployment/marketplace-service -n default --timeout=5m
+          kubectl rollout status deployment/order-service -n default --timeout=5m
+          kubectl rollout status deployment/media-service -n default --timeout=5m
+          kubectl rollout status deployment/notification-service -n default --timeout=5m

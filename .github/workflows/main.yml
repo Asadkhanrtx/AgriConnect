@@ -1,0 +1,62 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [eks-migration]
+
+jobs:
+  # ── Sequential service builds ─────────────────────────────────────────────────
+  ci-auth:
+    uses: ./.github/workflows/ci-auth.yml
+    secrets: inherit
+
+  ci-marketplace:
+    needs: ci-auth
+    uses: ./.github/workflows/ci-marketplace.yml
+    secrets: inherit
+
+  ci-order:
+    needs: ci-marketplace
+    uses: ./.github/workflows/ci-order.yml
+    secrets: inherit
+
+  ci-media:
+    needs: ci-order
+    uses: ./.github/workflows/ci-media.yml
+    secrets: inherit
+
+  ci-notification:
+    needs: ci-media
+    uses: ./.github/workflows/ci-notification.yml
+    secrets: inherit
+
+  # ── After all 5 services pass ─────────────────────────────────────────────────
+  cd-frontend:
+    needs: ci-notification
+    uses: ./.github/workflows/cd-frontend.yml
+    secrets: inherit
+
+  update-helm-values:
+    name: Update image tags in values.yaml
+    needs: ci-notification
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update tags
+        run: |
+          SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          sed -i "s/^\( *tag:\) .*/\1 ${SHA}/" helm/agriconnect/values.yaml
+
+      - name: Commit and push
+        run: |
+          SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add helm/agriconnect/values.yaml
+          git diff --staged --quiet || git commit -m "ci: update image tags to ${SHA} [skip ci]"
+          git push
