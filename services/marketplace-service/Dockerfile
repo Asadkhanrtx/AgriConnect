@@ -2,6 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+COPY shared/package*.json ./shared/
+RUN cd shared && npm install --omit=dev
+
 COPY shared/ ./shared/
 COPY services/marketplace-service/package*.json ./services/marketplace-service/
 
