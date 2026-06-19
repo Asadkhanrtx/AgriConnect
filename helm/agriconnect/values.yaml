@@ -4,7 +4,7 @@ global:
   eventsTopicArn: "arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"
   notificationsQueueUrl: "https://sqs.ap-south-1.amazonaws.com/978594443309/AgriConnect-Notifications-Queue"
   # Set by bootstrap script from terraform output
-  irsaRoleArn: ""
+  irsaRoleArn: "arn:aws:iam::978594443309:role/agriconnect-dev-eks-services-role"
   ecrRegistry: "978594443309.dkr.ecr.ap-south-1.amazonaws.com"
 
 services:

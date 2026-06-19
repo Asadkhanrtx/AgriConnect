@@ -227,8 +227,8 @@ resource "aws_ecr_repository" "services" {
 }
 
 resource "aws_ecr_lifecycle_policy" "services" {
-  for_each   = aws_ecr_repository.services
-  repository = each.value.name
+  for_each   = toset(["auth", "marketplace", "order", "media", "notification"])
+  repository = "agriconnect-${each.key}"
 
   policy = jsonencode({
     rules = [{
