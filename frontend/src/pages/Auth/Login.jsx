@@ -16,8 +16,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
 const STATS = [
-  { icon: <GroupsIcon sx={{ fontSize: 18, color: '#A3B18A' }} />, value: '1,200+', label: 'Farmers' },
-  { icon: <TrendingUpIcon sx={{ fontSize: 18, color: '#D9A441' }} />, value: '₹50Cr+', label: 'Traded' },
+  { icon: <GroupsIcon sx={{ fontSize: 18, color: '#A3B18A' }} />, value: '2,500+', label: 'Farmers' },
+  { icon: <TrendingUpIcon sx={{ fontSize: 18, color: '#D9A441' }} />, value: '₹75Cr+', label: 'Traded' },
   { icon: <AgricultureIcon sx={{ fontSize: 18, color: '#A3B18A' }} />, value: '28', label: 'States' },
 ];
 
