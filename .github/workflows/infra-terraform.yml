@@ -3,35 +3,17 @@ name: Infra - Terraform
 on:
   push:
     branches: [eks-migration]
+    paths:
+      - 'terraform/**'
   workflow_dispatch:
 
 env:
   AWS_REGION: ap-south-1
 
 jobs:
-  # Check whether this run should proceed
-  check:
-    name: Check trigger condition
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
-    steps:
-      - id: check
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event.head_commit.message }}" == *"[tf-deploy]"* ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "Skipping: commit message does not contain [tf-deploy]"
-          fi
-
   # Run plan first so reviewer can see what will change before approving
   plan:
     name: Terraform Plan
-    needs: check
-    if: needs.check.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
