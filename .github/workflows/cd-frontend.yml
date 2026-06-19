@@ -23,15 +23,21 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Read bot API URLs from SSM
+        run: |
+          FARMBOT_URL=$(aws ssm get-parameter --name /agriconnect/farmbot-api-url --query Parameter.Value --output text)
+          BUYERBOT_URL=$(aws ssm get-parameter --name /agriconnect/buyerbot-api-url --query Parameter.Value --output text)
+          echo "VITE_FARMBOT_API_URL=${FARMBOT_URL}" >> $GITHUB_ENV
+          echo "VITE_BUYERBOT_API_URL=${BUYERBOT_URL}" >> $GITHUB_ENV
+          echo "FarmBot URL: ${FARMBOT_URL}"
+          echo "BuyerBot URL: ${BUYERBOT_URL}"
+
       - name: Install dependencies
         working-directory: frontend
         run: npm install
 
       - name: Build frontend
         working-directory: frontend
-        env:
-          VITE_BUYERBOT_API_URL: https://ugtdorb2be.execute-api.ap-south-1.amazonaws.com/chat
-          VITE_FARMBOT_API_URL: https://oqpjllka0d.execute-api.ap-south-1.amazonaws.com/chat
         run: npm run build
 
       - name: Upload to S3
@@ -41,6 +47,6 @@ jobs:
 
       - name: Invalidate CloudFront cache
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id E292KDRCS52H6T \
-            --paths "/*"
+          CF_ID=$(aws ssm get-parameter --name /agriconnect/cloudfront-distribution-id --query Parameter.Value --output text)
+          aws cloudfront create-invalidation --distribution-id $CF_ID --paths "/*"
+          echo "Invalidated CloudFront distribution: $CF_ID"

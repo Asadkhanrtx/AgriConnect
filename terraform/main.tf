@@ -340,7 +340,7 @@ resource "aws_iam_role_policy" "farmbot_lambda" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0" },
+      { Effect = "Allow", Action = ["bedrock:InvokeModel", "bedrock:Converse"], Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0" },
       { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = "${aws_s3_bucket.farmbot_logs.arn}/*" },
       { Effect = "Allow", Action = ["sns:Publish"], Resource = aws_sns_topic.farmbot_critical.arn },
       { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "arn:aws:logs:*:*:*" }
@@ -488,4 +488,48 @@ resource "aws_lambda_permission" "buyerbot_api_gw" {
   function_name = aws_lambda_function.buyerbot.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.buyerbot.execution_arn}/*/*"
+}
+
+# ── SSM Parameters (read by CI/CD pipelines — no hardcoding needed) ──────────
+
+resource "aws_ssm_parameter" "farmbot_api_url" {
+  name  = "/agriconnect/farmbot-api-url"
+  type  = "String"
+  value = "${trimsuffix(aws_apigatewayv2_stage.farmbot.invoke_url, "/")}/chat"
+}
+
+resource "aws_ssm_parameter" "buyerbot_api_url" {
+  name  = "/agriconnect/buyerbot-api-url"
+  type  = "String"
+  value = "${trimsuffix(aws_apigatewayv2_stage.buyerbot.invoke_url, "/")}/chat"
+}
+
+resource "aws_ssm_parameter" "cloudfront_distribution_id" {
+  name  = "/agriconnect/cloudfront-distribution-id"
+  type  = "String"
+  value = module.cloudfront.distribution_id
+}
+
+resource "aws_ssm_parameter" "eks_cluster_name" {
+  name  = "/agriconnect/eks-cluster-name"
+  type  = "String"
+  value = module.eks.cluster_name
+}
+
+resource "aws_ssm_parameter" "eks_services_irsa_role_arn" {
+  name  = "/agriconnect/eks-services-irsa-role-arn"
+  type  = "String"
+  value = module.eks.services_irsa_role_arn
+}
+
+resource "aws_ssm_parameter" "eks_lb_controller_role_arn" {
+  name  = "/agriconnect/eks-lb-controller-role-arn"
+  type  = "String"
+  value = module.eks.lb_controller_role_arn
+}
+
+resource "aws_ssm_parameter" "public_subnet_ids" {
+  name  = "/agriconnect/public-subnet-ids"
+  type  = "String"
+  value = join(",", module.networking.public_subnet_ids)
 }

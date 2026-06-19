@@ -1,6 +1,7 @@
 name: CD - Deploy Backend to EKS
 
 on:
+  workflow_call:
   workflow_dispatch:
 
 env:
@@ -11,7 +12,6 @@ jobs:
   deploy:
     name: Helm Upgrade
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - uses: actions/checkout@v4
 

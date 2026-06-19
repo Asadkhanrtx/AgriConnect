@@ -5,7 +5,7 @@ on:
     branches: [eks-migration]
 
 jobs:
-  # ── Sequential service builds ─────────────────────────────────────────────────
+  # ── Build all services sequentially ─────────────────────────────────────────
   ci-auth:
     uses: ./.github/workflows/ci-auth.yml
     secrets: inherit
@@ -30,12 +30,7 @@ jobs:
     uses: ./.github/workflows/ci-notification.yml
     secrets: inherit
 
-  # ── After all 5 services pass ─────────────────────────────────────────────────
-  cd-frontend:
-    needs: ci-notification
-    uses: ./.github/workflows/cd-frontend.yml
-    secrets: inherit
-
+  # ── After all 5 services pass ─────────────────────────────────────────────
   update-helm-values:
     name: Update image tags in values.yaml
     needs: ci-notification
@@ -60,3 +55,13 @@ jobs:
           git add helm/agriconnect/values.yaml
           git diff --staged --quiet || git commit -m "ci: update image tags to ${SHA} [skip ci]"
           git push
+
+  cd-backend:
+    needs: update-helm-values
+    uses: ./.github/workflows/cd-backend.yml
+    secrets: inherit
+
+  cd-frontend:
+    needs: ci-notification
+    uses: ./.github/workflows/cd-frontend.yml
+    secrets: inherit
