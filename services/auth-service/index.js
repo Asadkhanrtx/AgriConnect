@@ -7,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'auth-service', version: '1.1.0', timestamp: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'auth-service', version: '1.2.0', timestamp: new Date() }));
 
 app.use('/api/auth', authRoutes);
 
