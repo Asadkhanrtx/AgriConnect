@@ -25,5 +25,6 @@ locals {
     Project     = var.project_name
     Environment = local.workspace_env
     ManagedBy   = "Terraform"
+    Owner       = "asadchamp109@gmail.com"
   }
 }
