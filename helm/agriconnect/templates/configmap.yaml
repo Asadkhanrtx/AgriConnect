@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: agriconnect-config
-  namespace: default
+  namespace: {{ .Values.global.namespace }}
 data:
   NODE_ENV: "production"
   AWS_REGION: {{ .Values.global.region | quote }}

@@ -2,11 +2,11 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [eks-migration]
+    branches: [main, develop]
   workflow_run:
     workflows: ["Infra - Terraform"]
     types: [completed]
-    branches: [eks-migration]
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       fresh_deploy:
@@ -101,10 +101,78 @@ jobs:
     uses: ./.github/workflows/ci-notification.yml
     secrets: inherit
 
-  # ── After all 5 services pass: stamp image tags into values.yaml ──────────
+  # ── SAST — SonarCloud (sequential: must pass before Snyk runs) ────────────
+  sast:
+    name: SAST - SonarCloud
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v3
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ── Notify on SonarCloud failure ───────────────────────────────────────────
+  notify-sast:
+    name: Notify - SonarCloud Failed
+    needs: sast
+    if: failure() && needs.sast.result == 'failure'
+    uses: ./.github/workflows/notify-failure.yml
+    secrets: inherit
+    with:
+      scan_name: "SonarCloud SAST"
+
+  # ── Snyk — runs after SonarCloud passes, always completes ─────────────────
+  snyk:
+    name: Snyk - Dependency Scan
+    needs: sast
+    if: needs.sast.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      failed: ${{ steps.snyk-scan.outcome == 'failure' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Snyk CLI
+        run: npm install -g snyk
+
+      - name: Install dependencies
+        run: |
+          for dir in shared services/auth-service services/marketplace-service services/order-service services/media-service services/notification-service; do
+            echo "Installing deps in $dir..."
+            (cd $dir && npm install --omit=dev)
+          done
+
+      - name: Run Snyk scan
+        id: snyk-scan
+        run: snyk test --all-projects --severity-threshold=high
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+  # ── Notify on Snyk failure (pipeline still continues) ─────────────────────
+  notify-snyk:
+    name: Notify - Snyk Vulnerabilities Found
+    needs: snyk
+    if: needs.snyk.outputs.failed == 'true'
+    uses: ./.github/workflows/notify-failure.yml
+    secrets: inherit
+    with:
+      scan_name: "Snyk Dependency Scan"
+
+  # ── After all 5 services + SAST + Snyk complete: stamp image tags ─────────
   update-helm-values:
     name: Update image tags in values.yaml
-    needs: [ci-auth, ci-marketplace, ci-order, ci-media, ci-notification]
+    needs: [ci-auth, ci-marketplace, ci-order, ci-media, ci-notification, sast, snyk]
     runs-on: ubuntu-latest
     permissions:
       contents: write

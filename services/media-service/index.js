@@ -6,7 +6,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'media-service', timestamp: new Date() }));
+app.get('/healthz', (req, res) => res.status(200).json({ status: 'ok', service: 'media-service' }));
+app.get('/ready', (req, res) => res.status(200).json({ status: 'ready' }));
 
 app.use('/api/media', mediaRoutes);
 

@@ -10,7 +10,7 @@ on:
   workflow_run:
     workflows: ["CI Pipeline"]
     types: [completed]
-    branches: [eks-migration]
+    branches: [main]
 
 env:
   AWS_REGION: ap-south-1
@@ -138,25 +138,19 @@ jobs:
       # ── Deploy application via Helm ─────────────────────────────────────────
       - name: Deploy Helm chart
         run: |
-          # Annotate IRSA service account for app pods
-          kubectl create serviceaccount agriconnect-services -n default --dry-run=client -o yaml | kubectl apply -f -
-          kubectl annotate serviceaccount agriconnect-services \
-            -n default \
-            eks.amazonaws.com/role-arn=$IRSA_ROLE \
-            --overwrite
-
           helm upgrade --install agriconnect ./helm/agriconnect \
-            --namespace default \
+            --namespace production \
+            --create-namespace \
             --set global.irsaRoleArn=$IRSA_ROLE \
             --set ingress.subnets=$SUBNETS \
-            --wait --atomic --timeout=10m
+            --wait --rollback-on-failure --timeout=10m
 
       # ── Wait for ALB URL ────────────────────────────────────────────────────
       - name: Wait for ALB DNS
         run: |
           echo "Waiting for ALB to be provisioned by LB controller..."
           for i in $(seq 1 30); do
-            ALB_URL=$(kubectl get ingress agriconnect-ingress -n default \
+            ALB_URL=$(kubectl get ingress agriconnect-ingress -n production \
               -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ -n "$ALB_URL" ]; then
               echo "ALB_URL=$ALB_URL" >> $GITHUB_ENV
@@ -209,16 +203,16 @@ PYEOF
       - name: Run DB migration
         run: |
           ECR_REGISTRY=$(aws ecr describe-registry --query registryId --output text).dkr.ecr.$AWS_REGION.amazonaws.com
-          AUTH_IMAGE=$(kubectl get deployment auth-service -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          AUTH_IMAGE=$(kubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].image}')
 
-          kubectl delete pod db-migrate -n default --ignore-not-found=true
+          kubectl delete pod db-migrate -n production --ignore-not-found=true
 
           kubectl apply -f - <<EOF
           apiVersion: v1
           kind: Pod
           metadata:
             name: db-migrate
-            namespace: default
+            namespace: production
           spec:
             serviceAccountName: agriconnect-services
             restartPolicy: Never
@@ -230,22 +224,22 @@ PYEOF
           EOF
 
           echo "Waiting for migration to complete..."
-          kubectl wait pod/db-migrate -n default --for=condition=Succeeded --timeout=5m
-          kubectl logs db-migrate -n default
+          kubectl wait pod/db-migrate -n production --for=condition=Succeeded --timeout=5m
+          kubectl logs db-migrate -n production
 
       # ── Run database seed ───────────────────────────────────────────────────
       - name: Run DB seed
         run: |
-          AUTH_IMAGE=$(kubectl get deployment auth-service -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          AUTH_IMAGE=$(kubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].image}')
 
-          kubectl delete pod db-seed -n default --ignore-not-found=true
+          kubectl delete pod db-seed -n production --ignore-not-found=true
 
           kubectl apply -f - <<EOF
           apiVersion: v1
           kind: Pod
           metadata:
             name: db-seed
-            namespace: default
+            namespace: production
           spec:
             serviceAccountName: agriconnect-services
             restartPolicy: Never
@@ -257,14 +251,14 @@ PYEOF
           EOF
 
           echo "Waiting for seed to complete..."
-          kubectl wait pod/db-seed -n default --for=condition=Succeeded --timeout=5m
-          kubectl logs db-seed -n default
+          kubectl wait pod/db-seed -n production --for=condition=Succeeded --timeout=5m
+          kubectl logs db-seed -n production
 
       # ── Cleanup ─────────────────────────────────────────────────────────────
       - name: Cleanup one-off pods
         if: always()
         run: |
-          kubectl delete pod db-migrate db-seed -n default --ignore-not-found=true
+          kubectl delete pod db-migrate db-seed -n production --ignore-not-found=true
 
       # ── Summary ─────────────────────────────────────────────────────────────
       - name: Bootstrap complete

@@ -1,0 +1,37 @@
+name: Notify - Scan Failure
+
+on:
+  workflow_call:
+    inputs:
+      scan_name:
+        required: true
+        type: string
+    secrets:
+      TF_VAR_SMTP_PASS:
+        required: true
+
+jobs:
+  notify:
+    name: Send failure email
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Gmail notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          secure: false
+          username: asadchamp109@gmail.com
+          password: ${{ secrets.TF_VAR_SMTP_PASS }}
+          subject: "AgriConnect — ${{ inputs.scan_name }} scan FAILED"
+          to: asadchamp109@gmail.com
+          from: AgriConnect CI <asadchamp109@gmail.com>
+          body: |
+            Security scan failure detected in AgriConnect pipeline.
+
+            Scan    : ${{ inputs.scan_name }}
+            Branch  : ${{ github.ref_name }}
+            Commit  : ${{ github.sha }}
+            Actor   : ${{ github.actor }}
+
+            View run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

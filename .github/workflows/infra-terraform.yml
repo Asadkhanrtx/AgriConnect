@@ -2,7 +2,7 @@ name: Infra - Terraform
 
 on:
   push:
-    branches: [eks-migration]
+    branches: [main]
     paths:
       - 'terraform/**'
   workflow_dispatch:
@@ -11,9 +11,26 @@ env:
   AWS_REGION: ap-south-1
 
 jobs:
-  # Run plan first so reviewer can see what will change before approving
+  # ── Security scan — Trivy IaC (no AWS needed) ─────────────────────────────
+  scan:
+    name: Trivy IaC Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan terraform for misconfigurations
+        uses: aquasecurity/trivy-action@v0.28.0
+        with:
+          scan-type: config
+          scan-ref: terraform/
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          format: table
+
+  # ── Plan — validate, fmt check, then plan ─────────────────────────────────
   plan:
     name: Terraform Plan
+    needs: scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,8 +47,20 @@ jobs:
         working-directory: terraform
         run: terraform init
 
+      - name: Terraform Format Check
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
       - name: Terraform Plan
         working-directory: terraform
+        env:
+          TF_VAR_rds_password: ${{ secrets.TF_VAR_RDS_PASSWORD }}
+          TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+          TF_VAR_smtp_pass: ${{ secrets.TF_VAR_SMTP_PASS }}
         run: terraform plan -var-file=terraform.tfvars -out=tfplan
 
       - name: Upload plan artifact
@@ -41,7 +70,7 @@ jobs:
           path: terraform/tfplan
           retention-days: 1
 
-  # Approval gate — reviewer sees plan output in logs before clicking Approve
+  # ── Apply — manual approval gate via environment ───────────────────────────
   apply:
     name: Terraform Apply
     needs: plan
@@ -70,4 +99,8 @@ jobs:
 
       - name: Terraform Apply
         working-directory: terraform
+        env:
+          TF_VAR_rds_password: ${{ secrets.TF_VAR_RDS_PASSWORD }}
+          TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+          TF_VAR_smtp_pass: ${{ secrets.TF_VAR_SMTP_PASS }}
         run: terraform apply tfplan

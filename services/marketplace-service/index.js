@@ -7,7 +7,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'marketplace-service', timestamp: new Date() }));
+let isReady = false;
+
+app.get('/healthz', (req, res) => res.status(200).json({ status: 'ok', service: 'marketplace-service' }));
+app.get('/ready', async (req, res) => {
+  if (!isReady) return res.status(503).json({ status: 'not ready' });
+  try {
+    const db = await getDatabaseConnection();
+    await db.authenticate();
+    res.status(200).json({ status: 'ready' });
+  } catch (err) {
+    res.status(503).json({ status: 'not ready', error: err.message });
+  }
+});
 
 app.use('/api/marketplace', marketplaceRoutes);
 
@@ -16,6 +28,7 @@ const PORT = process.env.PORT || 3002;
 async function startServer() {
   try {
     await getDatabaseConnection();
+    isReady = true;
     app.listen(PORT, () => {
       console.log(`Marketplace Service running on port ${PORT}`);
     });

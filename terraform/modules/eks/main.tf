@@ -52,6 +52,13 @@ resource "aws_iam_role_policy_attachment" "node_ssm" {
   role       = aws_iam_role.node.name
 }
 
+# ── EKS Control Plane Log Group ───────────────────────────────────────────────
+resource "aws_cloudwatch_log_group" "eks_cluster" {
+  name              = "/aws/eks/${var.name_prefix}-eks/cluster"
+  retention_in_days = 30
+  tags              = { Name = "${var.name_prefix}-eks-logs" }
+}
+
 # ── EKS Cluster ───────────────────────────────────────────────────────────────
 resource "aws_eks_cluster" "main" {
   name     = "${var.name_prefix}-eks"
@@ -64,7 +71,12 @@ resource "aws_eks_cluster" "main" {
     endpoint_public_access  = true
   }
 
-  depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
+  depends_on = [
+    aws_iam_role_policy_attachment.cluster_policy,
+    aws_cloudwatch_log_group.eks_cluster,
+  ]
 
   tags = { Name = "${var.name_prefix}-eks" }
 }
@@ -122,7 +134,10 @@ resource "aws_iam_role" "services" {
       Principal = { Federated = aws_iam_openid_connect_provider.eks.arn }
       Condition = {
         StringLike = {
-          "${local.oidc_issuer}:sub" = "system:serviceaccount:default:agriconnect-services"
+          "${local.oidc_issuer}:sub" = [
+            "system:serviceaccount:production:agriconnect-services",
+            "system:serviceaccount:dev:agriconnect-services"
+          ]
           "${local.oidc_issuer}:aud" = "sts.amazonaws.com"
         }
       }
@@ -147,9 +162,9 @@ resource "aws_iam_role_policy" "services" {
         Resource = "arn:aws:secretsmanager:*:${data.aws_caller_identity.current.account_id}:secret:agriconnect/*"
       },
       {
-        Sid    = "SNS"
-        Effect = "Allow"
-        Action = ["sns:Publish"]
+        Sid      = "SNS"
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
         Resource = "*"
       },
       {

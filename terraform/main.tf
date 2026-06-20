@@ -67,7 +67,7 @@ resource "aws_s3_bucket" "frontend" {
 resource "aws_s3_bucket_website_configuration" "frontend" {
   bucket = aws_s3_bucket.frontend.id
   index_document { suffix = "index.html" }
-  error_document { key    = "index.html" }
+  error_document { key = "index.html" }
 }
 
 resource "aws_s3_bucket_public_access_block" "frontend" {
@@ -329,7 +329,7 @@ resource "aws_sns_topic" "farmbot_critical" {
 resource "aws_iam_role" "farmbot_lambda" {
   name = "${local.name_prefix}-farmbot-lambda-role"
   assume_role_policy = jsonencode({
-    Version = "2012-10-17"
+    Version   = "2012-10-17"
     Statement = [{ Action = "sts:AssumeRole", Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" } }]
   })
 }
@@ -417,7 +417,7 @@ data "archive_file" "buyerbot" {
 resource "aws_iam_role" "buyerbot_lambda" {
   name = "${local.name_prefix}-buyerbot-lambda-role"
   assume_role_policy = jsonencode({
-    Version = "2012-10-17"
+    Version   = "2012-10-17"
     Statement = [{ Action = "sts:AssumeRole", Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" } }]
   })
 }

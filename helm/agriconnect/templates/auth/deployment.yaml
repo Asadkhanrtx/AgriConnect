@@ -37,15 +37,16 @@ spec:
               memory: {{ .Values.resources.limits.memory }}
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 3001
             initialDelaySeconds: 30
             periodSeconds: 15
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 3001
+
             initialDelaySeconds: 15
             periodSeconds: 10
             failureThreshold: 3

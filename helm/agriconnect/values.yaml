@@ -1,4 +1,5 @@
 global:
+  namespace: production
   region: ap-south-1
   dbSecretName: "agriconnect/dev/database"
   eventsTopicArn: "arn:aws:sns:ap-south-1:978594443309:AgriConnect-Events"

@@ -6,7 +6,6 @@ on:
 
 env:
   AWS_REGION: ap-south-1
-  CLUSTER_NAME: agriconnect-dev-eks
 
 jobs:
   deploy:
@@ -24,6 +23,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Get cluster name from SSM
+        run: |
+          CLUSTER=$(aws ssm get-parameter --name /agriconnect/eks-cluster-name --query Parameter.Value --output text)
+          echo "CLUSTER_NAME=$CLUSTER" >> $GITHUB_ENV
+
       - name: Configure kubectl
         run: |
           aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
@@ -39,15 +43,53 @@ jobs:
       - name: Helm upgrade
         run: |
           helm upgrade --install agriconnect ./helm/agriconnect \
-            --namespace default \
+            --namespace production \
+            --create-namespace \
             --wait \
-            --atomic \
+            --rollback-on-failure \
             --timeout 10m
 
       - name: Verify deployments
         run: |
-          kubectl rollout status deployment/auth-service -n default --timeout=5m
-          kubectl rollout status deployment/marketplace-service -n default --timeout=5m
-          kubectl rollout status deployment/order-service -n default --timeout=5m
-          kubectl rollout status deployment/media-service -n default --timeout=5m
-          kubectl rollout status deployment/notification-service -n default --timeout=5m
+          kubectl rollout status deployment/auth-service -n production --timeout=5m
+          kubectl rollout status deployment/marketplace-service -n production --timeout=5m
+          kubectl rollout status deployment/order-service -n production --timeout=5m
+          kubectl rollout status deployment/media-service -n production --timeout=5m
+          kubectl rollout status deployment/notification-service -n production --timeout=5m
+
+      - name: Smoke tests
+        run: |
+          echo "Running smoke tests against deployed services..."
+          declare -A SERVICES=(
+            [auth-service]=3001
+            [marketplace-service]=3002
+            [order-service]=3003
+            [media-service]=3004
+            [notification-service]=3005
+          )
+          FAILED=0
+          for SVC in "${!SERVICES[@]}"; do
+            PORT=${SERVICES[$SVC]}
+            echo "Testing $SVC on port $PORT..."
+            RESULT=$(kubectl exec -n production deployment/$SVC -- \
+              wget -qO- --timeout=5 http://localhost:$PORT/healthz 2>/dev/null || echo "FAILED")
+            if echo "$RESULT" | grep -q '"status"'; then
+              echo "  $SVC /healthz — PASS"
+            else
+              echo "  $SVC /healthz — FAIL ($RESULT)"
+              FAILED=1
+            fi
+            RESULT=$(kubectl exec -n production deployment/$SVC -- \
+              wget -qO- --timeout=5 http://localhost:$PORT/ready 2>/dev/null || echo "FAILED")
+            if echo "$RESULT" | grep -q '"status"'; then
+              echo "  $SVC /ready  — PASS"
+            else
+              echo "  $SVC /ready  — FAIL ($RESULT)"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" = "1" ]; then
+            echo "One or more smoke tests failed — deployment is unhealthy"
+            exit 1
+          fi
+          echo "All smoke tests passed"
