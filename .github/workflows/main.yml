@@ -3,37 +3,108 @@ name: CI Pipeline
 on:
   push:
     branches: [eks-migration]
+  workflow_run:
+    workflows: ["Infra - Terraform"]
+    types: [completed]
+    branches: [eks-migration]
+  workflow_dispatch:
+    inputs:
+      fresh_deploy:
+        description: 'Fresh deploy after local terraform apply (skips cd-backend — run bootstrap manually after)'
+        required: false
+        default: 'true'
+        type: boolean
 
 jobs:
-  # ── Build all services sequentially ─────────────────────────────────────────
+  # ── Gate: decide run mode based on what triggered this workflow ───────────
+  # push           → regular CI, cd-backend runs if backend changed
+  # workflow_run   → terraform just applied, fresh deploy, skip cd-backend
+  # workflow_dispatch → user chooses via input (default: fresh deploy)
+  guard:
+    name: Check trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      is_fresh_deploy: ${{ steps.check.outputs.is_fresh_deploy }}
+    steps:
+      - name: Evaluate trigger
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+            if [ "$CONCLUSION" != "success" ]; then
+              echo "Terraform workflow did not succeed (conclusion: $CONCLUSION) — skipping CI"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            else
+              echo "Triggered by successful terraform apply — fresh deploy mode"
+              echo "should_run=true" >> $GITHUB_OUTPUT
+            fi
+            echo "is_fresh_deploy=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FRESH="${{ inputs.fresh_deploy }}"
+            echo "Manual dispatch — fresh_deploy=$FRESH"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "is_fresh_deploy=$FRESH" >> $GITHUB_OUTPUT
+          else
+            echo "Triggered by push — regular CI mode"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "is_fresh_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Detect which paths changed (used to gate cd-backend on code pushes) ──
+  changes:
+    name: Detect changed paths
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'services/**'
+              - 'helm/**'
+              - 'shared/**'
+
+  # ── Build all 5 services in PARALLEL (was sequential — now ~10 min vs ~25) ──
   ci-auth:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     uses: ./.github/workflows/ci-auth.yml
     secrets: inherit
 
   ci-marketplace:
-    needs: ci-auth
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     uses: ./.github/workflows/ci-marketplace.yml
     secrets: inherit
 
   ci-order:
-    needs: ci-marketplace
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     uses: ./.github/workflows/ci-order.yml
     secrets: inherit
 
   ci-media:
-    needs: ci-order
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     uses: ./.github/workflows/ci-media.yml
     secrets: inherit
 
   ci-notification:
-    needs: ci-media
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     uses: ./.github/workflows/ci-notification.yml
     secrets: inherit
 
-  # ── After all 5 services pass ─────────────────────────────────────────────
+  # ── After all 5 services pass: stamp image tags into values.yaml ──────────
   update-helm-values:
     name: Update image tags in values.yaml
-    needs: ci-notification
+    needs: [ci-auth, ci-marketplace, ci-order, ci-media, ci-notification]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -56,12 +127,19 @@ jobs:
           git diff --staged --quiet || git commit -m "ci: update image tags to ${SHA} [skip ci]"
           git push
 
+  # ── Deploy backend via Helm — only on code push when backend files changed ─
+  # Skipped on fresh deploy: bootstrap.yml installs LB controller first,
+  # then deploys helm, so cd-backend would fail (no ALB provisioner yet).
   cd-backend:
-    needs: update-helm-values
+    needs: [update-helm-values, changes, guard]
+    if: needs.guard.outputs.is_fresh_deploy == 'false' && needs.changes.outputs.backend == 'true'
     uses: ./.github/workflows/cd-backend.yml
     secrets: inherit
 
+  # ── Deploy frontend — runs on both fresh deploy and code push ─────────────
+  # S3 bucket exists after terraform apply, so this is safe on fresh deploy.
   cd-frontend:
-    needs: ci-notification
+    needs: [update-helm-values, guard]
+    if: needs.guard.outputs.should_run == 'true'
     uses: ./.github/workflows/cd-frontend.yml
     secrets: inherit

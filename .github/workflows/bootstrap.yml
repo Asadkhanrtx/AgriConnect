@@ -1,18 +1,57 @@
 name: Bootstrap — Post Terraform Apply
 
-# Run this ONCE after every fresh terraform apply.
-# It installs the ALB controller, deploys helm, runs migrations+seeds,
-# then updates CloudFront to point at the new ALB.
+# Runs automatically after a fresh terraform apply (via workflow_run chain:
+#   infra-terraform → CI Pipeline → this workflow).
+# Only auto-triggers when CI was itself triggered by terraform (not a code push).
+# Can also be run manually via workflow_dispatch.
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types: [completed]
+    branches: [eks-migration]
 
 env:
   AWS_REGION: ap-south-1
 
 jobs:
+  # ── Gate: only proceed if CI succeeded AND came from a terraform trigger ───
+  guard:
+    name: Check trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Evaluate trigger
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+            # github.event.workflow_run.event = what triggered the upstream CI run.
+            # 'workflow_run' means CI was triggered by infra-terraform (fresh deploy).
+            # 'push' means CI was triggered by a code push — bootstrap not needed.
+            TRIGGER_EVENT="${{ github.event.workflow_run.event }}"
+
+            if [ "$CONCLUSION" != "success" ]; then
+              echo "CI pipeline did not succeed (conclusion: $CONCLUSION) — skipping bootstrap"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            elif [ "$TRIGGER_EVENT" != "workflow_run" ]; then
+              echo "CI was triggered by '$TRIGGER_EVENT', not by terraform — skipping bootstrap"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            else
+              echo "CI succeeded and was triggered by terraform — proceeding with bootstrap"
+              echo "should_run=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Manual dispatch — proceeding with bootstrap"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
   bootstrap:
     name: Bootstrap EKS & Deploy
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +61,30 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # ── Verify ECR images were pushed by CI before attempting deploy ────────
+      - name: Verify ECR images exist
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          FAILED=0
+          for svc in auth marketplace order media notification; do
+            COUNT=$(aws ecr list-images \
+              --repository-name agriconnect-$svc \
+              --region $AWS_REGION \
+              --query "length(imageIds)" \
+              --output text 2>/dev/null || echo "0")
+            if [ "$COUNT" = "0" ] || [ "$COUNT" = "None" ]; then
+              echo "ERROR: No images found in ECR for agriconnect-$svc"
+              FAILED=1
+            else
+              echo "OK: agriconnect-$svc — $COUNT image(s) in ECR"
+            fi
+          done
+          if [ "$FAILED" = "1" ]; then
+            echo ""
+            echo "Bootstrap aborted: CI pipeline must push images to ECR first."
+            exit 1
+          fi
 
       # ── Read infra values from SSM ──────────────────────────────────────────
       - name: Read infra config from SSM
